@@ -261,8 +261,8 @@ class CustomGraphView(NSView):
         axis_path.stroke()
         
         # Axis Titles
-        # Y Title "(mg/dL)"
-        title_str = "(mg/dL)"
+        # Y Title "(mg/dL)" or "(mmol/L)"
+        title_str = "(mmol/L)" if is_mmol else "(mg/dL)"
         t_size = NSString.stringWithString_(title_str).sizeWithAttributes_(axis_attrs)
         # Draw upright above Y axis
         NSString.stringWithString_(title_str).drawAtPoint_withAttributes_((5, height - margin_top + 5), axis_attrs)
