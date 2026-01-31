@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Mac
+.DS_Store
+
+# Project Specific
+config.json
+build/
+dist/
+*.dmg
+*.pkg
+
+# Generated Icons (Optional: keep Schugaa.icns if you want others to build without running create_icon.sh)
+# Keeping Schugaa.icns is recommended for easier building
+# icon_source.png
+
+# Editors
+.vscode/
+.idea/

@@ -1,0 +1,62 @@
+<svg
+  width="512"
+  height="512"
+  viewBox="0 0 512 512"
+  xmlns="http://www.w3.org/2000/svg"
+>
+
+  <!-- Gauge arcs -->
+  <path
+    d="M96 320 A160 160 0 0 1 176 176"
+    fill="none"
+    stroke="#7ED957"
+    stroke-width="32"
+    stroke-linecap="round"
+  />
+  <path
+    d="M176 176 A160 160 0 0 1 336 176"
+    fill="none"
+    stroke="#FFD34D"
+    stroke-width="32"
+    stroke-linecap="round"
+  />
+  <path
+    d="M336 176 A160 160 0 0 1 416 320"
+    fill="none"
+    stroke="#EF4444"
+    stroke-width="32"
+    stroke-linecap="round"
+  />
+
+  <!-- Needle -->
+  <circle cx="256" cy="256" r="16" fill="#0F766E" />
+  <path
+    d="M256 256 L256 180"
+    stroke="#0F766E"
+    stroke-width="16"
+    stroke-linecap="round"
+  />
+
+  <!-- CGM sensor -->
+  <ellipse
+    cx="256"
+    cy="330"
+    rx="52"
+    ry="36"
+    fill="#FFFFFF"
+    stroke="#CBD5E1"
+    stroke-width="6"
+  />
+  <circle cx="244" cy="326" r="4" fill="#94A3B8" />
+  <circle cx="268" cy="326" r="4" fill="#94A3B8" />
+
+  <!-- Glucose droplet -->
+  <path
+    d="M256 356
+       C246 372 240 382 240 392
+       A16 16 0 0 0 272 392
+       C272 382 266 372 256 356 Z"
+    fill="#22C55E"
+  />
+
+</svg>
