@@ -154,18 +154,22 @@ class CustomGraphView(NSView):
         if is_mmol:
             max_y_val = 21.0
             min_y_val = 0.0
-            grid_values = [3, 6, 9, 12, 15, 18, 21]
+            grid_values = [2.8, 5.6, 8.3, 11.1, 13.9, 16.7, 19.4] # Approx for 50, 100... or just keep simple 3,6,9
+            # Let's keep simple integers for mmol but start lower?
+            grid_values = [3, 6, 9, 12, 15, 18, 21] 
             band_target_top = 10.0 
             band_target_bot = 3.9
-            band_high_top = 13.9 
+            band_high_top = 13.3 # 240
+            band_very_high_top = 14.4 # 260
         else:
             max_y_val = 320 # Give some headroom
             min_y_val = 50  # Start from 50 to focus view
-            grid_values = [100, 150, 200, 250, 300]
+            grid_values = [50, 100, 150, 200, 250, 300]
             # Bands
             band_target_top = 180
             band_target_bot = 70
-            band_high_top = 250
+            band_high_top = 240
+            band_very_high_top = 260
 
         y_range = max_y_val - min_y_val
         
@@ -190,9 +194,17 @@ class CustomGraphView(NSView):
 
         # --- 1. Background Bands ---
         
+        # Red Band (Low / Hypo)
+        y_t_bot = get_y(band_target_bot)
+        y_min = get_y(min_y_val)
+        if y_t_bot > y_min:
+             r_rect = NSMakeRect(margin_left, y_min, plot_width, y_t_bot - y_min)
+             # Light Red
+             NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.5, 0.5, 0.3).set()
+             NSBezierPath.fillRect_(r_rect)
+        
         # Green Band (Target)
         y_t_top = get_y(band_target_top)
-        y_t_bot = get_y(band_target_bot)
         # Check if visible
         if y_t_top > margin_bottom:
              g_rect = NSMakeRect(margin_left, y_t_bot, plot_width, y_t_top - y_t_bot)
@@ -208,6 +220,22 @@ class CustomGraphView(NSView):
              # Light Yellow
              NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.9, 0.4, 0.5).set()
              NSBezierPath.fillRect_(y_rect)
+             
+        # Orange Band (Very High 250-260)
+        y_vh_top = get_y(band_very_high_top)
+        if y_vh_top > y_h_top:
+             o_rect = NSMakeRect(margin_left, y_h_top, plot_width, y_vh_top - y_h_top)
+             # Orange
+             NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.6, 0.2, 0.5).set()
+             NSBezierPath.fillRect_(o_rect)
+
+        # Red Band (Dangerous > 260)
+        y_max = get_y(max_y_val)
+        if y_max > y_vh_top:
+             r2_rect = NSMakeRect(margin_left, y_vh_top, plot_width, y_max - y_vh_top)
+             # Red again
+             NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.5, 0.5, 0.3).set()
+             NSBezierPath.fillRect_(r2_rect)
 
         # --- 2. Grid Lines (Horizontal Dashed) ---
         grid_color = NSColor.colorWithCalibratedWhite_alpha_(0.7, 1.0)
@@ -232,7 +260,7 @@ class CustomGraphView(NSView):
 
         for val in grid_values:
             y = get_y(val)
-            if y > margin_bottom and y < height - margin_top:
+            if y >= margin_bottom and y <= height - margin_top:
                 # Line
                 grid_path.moveToPoint_((margin_left, y))
                 grid_path.lineToPoint_((width - margin_right, y))
