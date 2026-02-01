@@ -20,3 +20,24 @@ dist/
 # Editors
 .vscode/
 .idea/
+
+# Session Data
+session.json
+
+# Environment Variables & Secrets
+.env
+.env.local
+secrets.json
+
+# Logs
+*.log
+
+# Unit Test / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Temporary / Junk
+test.svg
+Thumbs.db

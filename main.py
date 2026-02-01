@@ -876,7 +876,7 @@ if __name__ == "__main__":
         
         # Region Dropdown (Top)
         region_popup = NSPopUpButton.alloc().initWithFrame_(NSMakeRect(10, 80, 135, 24))
-        regions = ['eu', 'global', 'de', 'fr', 'jp', 'ap', 'ae']
+        regions = ['eu', 'us', 'au', 'ca', 'global', 'de', 'fr', 'jp', 'ap', 'ae', 'la', 'eu2', 'gb', 'ru', 'tw', 'kr']
         region_popup.addItemsWithTitles_(regions)
         region_popup.selectItemWithTitle_("eu")
         
