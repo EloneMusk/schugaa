@@ -56,6 +56,10 @@ To create a standalone `.dmg` file that you can install like any other Mac app:
 - **Error 429 (Too Many Requests)**: Abbott/LibreView has strict rate limits. If you see this, the app will automatically back off and retry. If it persists, wait ~15-30 minutes.
 - **No Data**: Ensure your sensor is active and uploading data to LibreView (e.g., via the LibreLink phone app).
 - **Login Loop**: The app now handles redirects intelligently. If you still have issues, try "Logout" and logging in again with the correct initial region if known.
+- **"App is damaged" / "Can't be opened"**: This is due to macOS Gatekeeper. To fix:
+  1.  Open Terminal.
+  2.  Run: `xattr -cr /Applications/Schugaa.app` (or wherever you dragged the app).
+  3.  Alternatively, Right-Click the app and select **Open**.
 
 ## Credits & Acknowledgements 👏
 
