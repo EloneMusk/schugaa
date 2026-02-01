@@ -929,11 +929,11 @@ if __name__ == "__main__":
         
         # Email Field (Middle)
         email_field = NSTextField.alloc().initWithFrame_(NSMakeRect(10, 50, 280, 24))
-        email_field.setPlaceholderString_("Email")
+        email_field.setPlaceholderString_("LibreLinkUp Email")
         
         # Password Field (Bottom)
         pass_field = NSSecureTextField.alloc().initWithFrame_(NSMakeRect(10, 20, 280, 24))
-        pass_field.setPlaceholderString_("Password")
+        pass_field.setPlaceholderString_("LibreLinkUp Password")
         
         wrapper_view.addSubview_(region_popup)
         wrapper_view.addSubview_(unit_popup)
