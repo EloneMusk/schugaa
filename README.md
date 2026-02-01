@@ -9,13 +9,14 @@ Schugaa is a lightweight, native macOS menu bar application that displays real-t
 ## Features ✨
 
 *   **Menu Bar Widget**: View your latest glucose value and trend arrow directly in the macOS menu bar.
-*   **Interactive Graph**: Click the menu item to view a beautiful, native interactive graph of your recent history. hover over points to see exact values and timestamps.
+*   **Interactive Graph**: Click the menu item to view a beautiful, native interactive graph of your recent history. Hover over points to see exact values and timestamps.
 *   **Unit Conversion**: Supports both **mg/dL** and **mmol/L**. Switch instantly via the menu.
 *   **Auto-Refresh**: Data automatically refreshes in the background (every 5 minutes) and immediately when you open the menu.
-*   **Region Support**: Compatible with LibreView accounts worldwide (EU, Global, DE, FR, JP, AP, AE).
-*   **Native & Lightweight**: Built with Python and native macOS APIs for a seamless system integration.
+*   **Region Support**: Compatible with LibreView accounts worldwide (EU, Global, DE, FR, JP, AP, AE, UK, etc.).
+*   **Smart Redirect Handling**: Automatically detects and handles regional account redirects.
+*   **Native & Lightweight**: Built with Python and native macOS APIs (AppKit) for a seamless system integration.
 *   **Universal Support**: Runs natively on both Apple Silicon (M1/M2/M3) and Intel Macs.
-*   **Secure**: Your credentials are stored locally on your machine.
+*   **Secure**: Your credentials are stored locally on your machine (`~/.schugaa/session.json`).
 
 ## Installation 📦
 
@@ -34,7 +35,7 @@ To create a standalone `.dmg` file that you can install like any other Mac app:
     ```bash
     ./package.sh
     ```
-2.  The `Schugaa.dmg` file will be created in the project folder. Open it and drag Schugaa to your Applications folder.
+2.  The `Schugaa.dmg` file will be created in the `dist/` folder (or project root). Open it and drag Schugaa to your Applications folder.
 
 ## Usage 🚀
 
@@ -43,14 +44,20 @@ To create a standalone `.dmg` file that you can install like any other Mac app:
 3.  **Graph**: Click the menu bar item to see the graph.
 4.  **Settings**: 
     *   **Change Units**: Go to `Schugaa` -> `Units` to toggle between mg/dL and mmol/L.
+    *   **Share Debug Logs**: Go to `Schugaa` -> `Share Debug Logs` to find log files for troubleshooting.
     *   **Refresh**: Click `Schugaa` -> `Refresh Now` to force an update.
     *   **Logout**: Click `Schugaa` -> `Logout` to remove stored credentials.
 
 ## Troubleshooting 🛠️
 
-*   **Error 430 (Client Error)**: This usually means "Too Many Requests". Abbott/LibreView has strict rate limits. If you see this, wait ~15-30 minutes before trying again. The app behaves conservatively to avoid this, but frequent restarts usually trigger it.
+*   **Error 429 (Too Many Requests)**: Abbott/LibreView has strict rate limits. If you see this, the app will automatically back off and retry. If it persists, wait ~15-30 minutes.
 *   **No Data**: Ensure your sensor is active and uploading data to LibreView (e.g., via the LibreLink phone app).
+*   **Login Loop**: The app now handles redirects intelligently. If you still have issues, try "Logout" and logging in again with the correct initial region if known.
 
+## Credits & Acknowledgements 👏
+
+*   **[pylibrelinkup](https://github.com/robberwick/pylibrelinkup)**: A huge thanks to Rob Berwick for the excellent library that powers the API interactions in this app.
+*   **rumps**: For making macOS menu bar apps easy in Python.
 
 ## Support the Project ☕️
 

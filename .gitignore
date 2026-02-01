@@ -12,6 +12,7 @@ build/
 dist/
 *.dmg
 *.pkg
+Schugaa.spec
 
 # Generated Icons (Optional: keep Schugaa.icns if you want others to build without running create_icon.sh)
 # Keeping Schugaa.icns is recommended for easier building
