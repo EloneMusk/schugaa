@@ -3,6 +3,7 @@ import json
 import threading
 import os
 import sys
+import time
 from libre_api import LibreClient
 from AppKit import (NSImage, NSApplication, NSMenu, NSMenuItem, NSObject, NSView, NSBezierPath, 
                    NSTrackingArea, NSTextField, NSColor, NSFont, NSString,
@@ -64,6 +65,13 @@ class MenuActionHandler(NSObject):
 
     def donate_(self, sender):
         NSWorkspace.sharedWorkspace().openURL_(NSURL.URLWithString_("https://ko-fi.com/abhishek0978"))
+
+    def shareDebugLogs_(self, sender):
+        log_path = os.path.expanduser("~/Library/Logs/Schugaa/schugaa.log")
+        if os.path.exists(log_path):
+             NSWorkspace.sharedWorkspace().selectFile_inFileViewerRootedAtPath_(log_path, None)
+        else:
+             print("Log file not found.")
 
 class CustomGraphView(NSView):
     def initWithFrame_(self, frame):
@@ -588,6 +596,11 @@ class GlucoseApp(rumps.App):
             donate_item.setTarget_(self.menu_handler)
             app_menu.addItem_(donate_item)
             
+            # Add Share Debug Logs
+            debug_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Share Debug Logs", "shareDebugLogs:", "")
+            debug_item.setTarget_(self.menu_handler)
+            app_menu.addItem_(debug_item)
+            
             app_menu.addItem_(NSMenuItem.separatorItem())
             
             # Add Quit
@@ -801,6 +814,32 @@ def get_config_path():
     return os.path.join(app_dir, "config.json")
     
 
+def setup_logging():
+    """ Redirects stdout and stderr to a log file """
+    log_dir = os.path.expanduser("~/Library/Logs/Schugaa")
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+    
+    log_file = os.path.join(log_dir, "schugaa.log")
+    
+    # Simple redirector that writes to both terminal and file
+    class DualWriter:
+        def __init__(self, original_stream, file_path):
+            self.original_stream = original_stream
+            self.file = open(file_path, "a", buffering=1) # Line buffered
+            
+        def write(self, message):
+            self.original_stream.write(message)
+            self.file.write(message)
+            
+        def flush(self):
+            self.original_stream.flush()
+            self.file.flush()
+
+    sys.stdout = DualWriter(sys.stdout, log_file)
+    sys.stderr = DualWriter(sys.stderr, log_file)
+    print(f"--- Log Session Started: {time.ctime()} ---")
+
 def load_config_data():
     # Try finding config in standard path first
     config_path = get_config_path()
@@ -820,6 +859,8 @@ def load_config_data():
 
 
 if __name__ == "__main__":
+    setup_logging()
+
     # Ensure Dock icon is set
     set_dock_icon()
     
@@ -923,10 +964,18 @@ if __name__ == "__main__":
                 
                 # Test credentials
                 try:
+                    # Explicitly login to check success and get region
                     client = LibreClient(email, password, region)
+                    if not client.login():
+                        rumps.alert("Login Failed", "Could not authenticate with LibreLinkUp. Check credentials or try another region.")
+                        continue
+                        
+                    # Fetch data to be sure
                     client.get_latest_glucose()
                     
-                    # Save Config
+                    # Save Config - Use client.region in case of redirect
+                    final_region = client.region
+                    
                     import base64
                     email_b64 = base64.b64encode(email.encode('utf-8')).decode('utf-8')
                     password_b64 = base64.b64encode(password.encode('utf-8')).decode('utf-8')
@@ -934,7 +983,7 @@ if __name__ == "__main__":
                     config = {
                         "email": email_b64,
                         "password": password_b64,
-                        "region": region,
+                        "region": final_region,
                         "unit": unit
                     }
                     

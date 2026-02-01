@@ -49,8 +49,12 @@ class LibreClient:
 
     def _get_session_path(self):
         import os
-        # Same directory as script
-        return os.path.join(os.path.dirname(os.path.abspath(__file__)), self.session_file)
+        # Use ~/.schugaa/session.json for persistence
+        home = os.path.expanduser("~")
+        app_dir = os.path.join(home, ".schugaa")
+        if not os.path.exists(app_dir):
+            os.makedirs(app_dir, exist_ok=True)
+        return os.path.join(app_dir, self.session_file)
 
     def _save_session(self):
         try:
@@ -148,19 +152,14 @@ class LibreClient:
                 elif "data" in data and data["data"].get("redirect") and data["data"].get("region"):
                     new_region = data["data"]["region"]
                     print(f"Redirect received to region: {new_region}")
+                    
+                    if new_region == self.region:
+                        print("Redirect loop detected (target same as current). Aborting.")
+                        return False
+
                     if new_region in self.REGIONS:
                         self.base_url = self.REGIONS[new_region]
                         self.region = new_region # Update region
-                        # Important: Don't recurse immediately in a tight loop without limits, 
-                        # but in this case, we just updated base_url and will retry naturally in next loop or we can just retry once immediately?
-                        # Better to just update and continue the loop if we haven't exhausted retries.
-                        # But loop uses same URL? No, self.base_url is updated.
-                        # Recursion is cleaner for flow, but loop handles backoff.
-                        # Let's recurse ONCE for redirect to avoid loop issue
-                        # actually, just continue loop? Loop variable URL is dynamic?
-                        # url var is defined inside loop.
-                        # We must reset attempt count or just allow it to use a retry?
-                        # Let's just return self.login() which is recursive.
                         return self.login()
                     else:
                         print(f"Unknown region in redirect: {new_region}")
