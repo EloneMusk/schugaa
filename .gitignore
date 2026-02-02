@@ -42,3 +42,7 @@ htmlcov/
 # Temporary / Junk
 test.svg
 Thumbs.db
+convert_svg.py
+create_icon.sh
+debug.py
+*.swp
