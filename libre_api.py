@@ -143,7 +143,7 @@ class LibreClient:
                     
         return False
 
-    def get_latest_glucose(self):
+    def get_latest_glucose(self, retry=True):
         try:
             # Ensure logged in
             if not self.client.token:
@@ -153,8 +153,10 @@ class LibreClient:
             # Check expiry
             if time.time() > self.expiry:
                 print("Token likely expired. Relogging...")
-                if not self.login():
-                    return None
+                if self.login():
+                    if retry:
+                        return self.get_latest_glucose(retry=False)
+                return None
 
             # Get Patient (first one)
             try:
@@ -164,9 +166,9 @@ class LibreClient:
                 # The session token is likely valid but for the wrong region (pylibrelinkup doesn't auto-redirect on get_patients)
                 # We need to force a full login flow which handles redirects
                 if self.login():
-                    patients = self.client.get_patients()
-                else:
-                    return None
+                    if retry:
+                        return self.get_latest_glucose(retry=False)
+                return None
             
             if not patients:
                 print("No patients found.")
@@ -231,9 +233,8 @@ class LibreClient:
             print(f"Glucose fetch error: {e}")
             # Try once to re-login if error might be auth related
             if "401" in str(e) or "403" in str(e):
-                 if self.login():
-                     # Retry logic could go here but let's avoid infinite recursion complexity for now
-                     pass
+                 if self.login() and retry:
+                     return self.get_latest_glucose(retry=False)
             return None
 
 

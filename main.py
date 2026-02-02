@@ -544,8 +544,8 @@ class GlucoseApp(rumps.App):
         # Start a background timer for periodic updates?
         # User requested update "when opened", but periodic is also good.
         # But for now, relying on open event as requested.
-        self.timer = rumps.Timer(self.update_glucose, 300) # Update every 5 minutes
-        self.timer.start()
+        # self.timer = rumps.Timer(self.update_glucose, 300) # Update every 5 minutes
+        # self.timer.start()
 
 
 
@@ -666,7 +666,7 @@ class GlucoseApp(rumps.App):
             rumps.alert("Error", f"Could not process config: {e}")
             return {}
 
-    @rumps.timer(30)
+    @rumps.timer(60)
     def update_timer(self, sender):
         self.update_glucose(sender)
         
@@ -698,11 +698,16 @@ class GlucoseApp(rumps.App):
     def _update_ui_with_data(self, data):
         try:
             if not data:
+                # If we already have a value, keep it to mask transient errors
+                if self.title and "Created" not in self.title and "???" not in self.title:
+                    return
                 self.title = "???"
                 return
 
             value = data.get("Value")
             if value is None:
+                if self.title and "Created" not in self.title and "???" not in self.title:
+                    return
                 self.title = "???"
                 return
                 
@@ -720,7 +725,7 @@ class GlucoseApp(rumps.App):
                 disp_val = value / 18.0182
                 val_str = f"{disp_val:.1f}"
             else:
-                val_str = str(value)
+                val_str = str(int(value))
             
             # Simple title: "5.8 →" or "105 →"
             title_str = f" {val_str} {arrow} "
