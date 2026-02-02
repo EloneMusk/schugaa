@@ -10,7 +10,9 @@ from AppKit import (NSImage, NSApplication, NSMenu, NSMenuItem, NSObject, NSView
                    NSTrackingMouseEnteredAndExited, NSTrackingMouseMoved, 
                    NSTrackingActiveInKeyWindow, NSTrackingActiveAlways, NSTrackingInVisibleRect,
                    NSMutableAttributedString, NSFontAttributeName, NSForegroundColorAttributeName,
-                   NSParagraphStyleAttributeName, NSMutableParagraphStyle, NSWorkspace)
+                   NSParagraphStyleAttributeName, NSMutableParagraphStyle, NSWorkspace,
+                   NSVisualEffectView, NSVisualEffectMaterialHUDWindow, NSVisualEffectBlendingModeBehindWindow,
+                   NSVisualEffectStateActive, NSVisualEffectMaterialPopover)
 from Foundation import NSMakeRect, NSURL
 import objc
 
@@ -73,10 +75,11 @@ class MenuActionHandler(NSObject):
         else:
              print("Log file not found.")
 
-class CustomGraphView(NSView):
+class GraphPlotView(NSView):
     def initWithFrame_(self, frame):
-        self = objc.super(CustomGraphView, self).initWithFrame_(frame)
+        self = objc.super(GraphPlotView, self).initWithFrame_(frame)
         if self:
+
             self.data_points = []
             self.hover_point = None
             self.unit = "mg/dL"
@@ -96,15 +99,17 @@ class CustomGraphView(NSView):
             self.tooltip.setBezeled_(False)
             self.tooltip.setDrawsBackground_(False)
             self.tooltip.setBackgroundColor_(NSColor.clearColor())
-            self.tooltip.setTextColor_(NSColor.blackColor())
+            self.tooltip.setTextColor_(NSColor.whiteColor()) # White text
             self.tooltip.setEditable_(False)
             self.tooltip.setSelectable_(False)
             self.tooltip.setHidden_(True)
             self.tooltip.setWantsLayer_(True)
-            self.tooltip.layer().setCornerRadius_(10)
+            self.tooltip.layer().setCornerRadius_(8)
             self.tooltip.layer().setShadowOpacity_(0.2)
             self.tooltip.layer().setShadowOffset_((0, -2))
             self.tooltip.layer().setShadowRadius_(4)
+            # Dark Blue Background #003f5c with 0.6 alpha for more transparent glass effect
+            self.tooltip.layer().setBackgroundColor_(NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.25, 0.36, 0.6).CGColor())
             self.addSubview_(self.tooltip)
             
         return self
@@ -147,9 +152,9 @@ class CustomGraphView(NSView):
         if not self.data_points:
              return
 
-        # White Background
+        # 1. Solid White Background - Fill bounds to cover everything
         NSColor.whiteColor().set()
-        NSBezierPath.fillRect_(rect)
+        NSBezierPath.fillRect_(self.bounds())
         
         width = rect.size.width
         height = rect.size.height
@@ -158,40 +163,33 @@ class CustomGraphView(NSView):
         is_mmol = getattr(self, 'unit', 'mg/dL') == 'mmol/L'
         factor = 18.0182 if is_mmol else 1.0
         
-        # Range matching the image roughly (50 used as base, up to 300+)
         if is_mmol:
             max_y_val = 21.0
             min_y_val = 0.0
-            grid_values = [2.8, 5.6, 8.3, 11.1, 13.9, 16.7, 19.4] # Approx for 50, 100... or just keep simple 3,6,9
-            # Let's keep simple integers for mmol but start lower?
             grid_values = [3, 6, 9, 12, 15, 18, 21] 
-            band_target_top = 10.0 
-            band_target_bot = 3.9
-            band_high_top = 13.3 # 240
-            band_very_high_top = 14.4 # 260
+            val_70 = 3.9
+            val_180 = 10.0
         else:
-            max_y_val = 320 # Give some headroom
-            min_y_val = 50  # Start from 50 to focus view
+            # User request: Reduce gap above 300
+            max_y_val = 300 
+            min_y_val = 50 
             grid_values = [50, 100, 150, 200, 250, 300]
-            # Bands
-            band_target_top = 180
-            band_target_bot = 70
-            band_high_top = 240
-            band_very_high_top = 260
+            val_70 = 70
+            val_180 = 180
 
         y_range = max_y_val - min_y_val
         
-        # Margins for Axis Labels
-        margin_left = 35 # Reduced padding
+        # Margins (Optimized)
+        margin_left = 35
         margin_right = 20
-        margin_top = 30
-        margin_bottom = 40
+        # Reduced margins safely to remove unused space
+        margin_top = 20 
+        margin_bottom = 35
         
         plot_width = width - margin_left - margin_right
         plot_height = height - margin_bottom - margin_top
         
         def get_y(val):
-            # Clamp for drawing logic
             val_clamped = max(min(val, max_y_val), min_y_val)
             normalized = (val_clamped - min_y_val) / y_range
             return margin_bottom + normalized * plot_height
@@ -200,122 +198,83 @@ class CustomGraphView(NSView):
             step = plot_width / max(total - 1, 1) if total > 1 else 0
             return margin_left + index * step
 
-        # --- 1. Background Bands ---
+        # --- 2. Target Range (Light Green Band) ---
+        y_low = get_y(val_70)
+        y_high = get_y(val_180)
         
-        # Red Band (Low / Hypo)
-        y_t_bot = get_y(band_target_bot)
-        y_min = get_y(min_y_val)
-        if y_t_bot > y_min:
-             r_rect = NSMakeRect(margin_left, y_min, plot_width, y_t_bot - y_min)
-             # Light Red
-             NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.5, 0.5, 0.3).set()
-             NSBezierPath.fillRect_(r_rect)
+        if y_high > y_low:
+             band_rect = NSMakeRect(margin_left, y_low, plot_width, y_high - y_low)
+             # Very Light Green #e6f7eb approx
+             NSColor.colorWithCalibratedRed_green_blue_alpha_(0.90, 0.97, 0.92, 1.0).set()
+             NSBezierPath.fillRect_(band_rect)
+
+        # --- 3. Dashed Limit Lines (Low/High) ---
+        # User requested dotted line at 250
+        y_limit_high = get_y(250) if not is_mmol else get_y(13.9)
         
-        # Green Band (Target)
-        y_t_top = get_y(band_target_top)
-        # Check if visible
-        if y_t_top > margin_bottom:
-             g_rect = NSMakeRect(margin_left, y_t_bot, plot_width, y_t_top - y_t_bot)
-             # Light Green
-             NSColor.colorWithCalibratedRed_green_blue_alpha_(0.5, 0.9, 0.5, 0.5).set()
-             NSBezierPath.fillRect_(g_rect)
+        limit_path = NSBezierPath.bezierPath()
+        limit_path.setLineWidth_(1.0)
+        limit_path.setLineDash_count_phase_([6.0, 4.0], 2, 0.0)
+        
+        # Low Limit (70)
+        limit_path.moveToPoint_((margin_left, y_low))
+        limit_path.lineToPoint_((width - margin_right, y_low))
+        
+        # High Limit (250)
+        limit_path.moveToPoint_((margin_left, y_limit_high))
+        limit_path.lineToPoint_((width - margin_right, y_limit_high))
+        
+        # Red-ish color for limits
+        NSColor.colorWithCalibratedRed_green_blue_alpha_(0.8, 0.3, 0.3, 0.8).set()
+        limit_path.stroke()
 
-        # Yellow Band (High)
-        y_h_top = get_y(band_high_top)
-        # Draw from target top to high top
-        if y_h_top > y_t_top:
-             y_rect = NSMakeRect(margin_left, y_t_top, plot_width, y_h_top - y_t_top)
-             # Light Yellow
-             NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.9, 0.4, 0.5).set()
-             NSBezierPath.fillRect_(y_rect)
-             
-        # Orange Band (Very High 250-260)
-        y_vh_top = get_y(band_very_high_top)
-        if y_vh_top > y_h_top:
-             o_rect = NSMakeRect(margin_left, y_h_top, plot_width, y_vh_top - y_h_top)
-             # Orange
-             NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.6, 0.2, 0.5).set()
-             NSBezierPath.fillRect_(o_rect)
-
-        # Red Band (Dangerous > 260)
-        y_max = get_y(max_y_val)
-        if y_max > y_vh_top:
-             r2_rect = NSMakeRect(margin_left, y_vh_top, plot_width, y_max - y_vh_top)
-             # Red again
-             NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.5, 0.5, 0.3).set()
-             NSBezierPath.fillRect_(r2_rect)
-
-        # --- 2. Grid Lines (Horizontal Dashed) ---
-        grid_color = NSColor.colorWithCalibratedWhite_alpha_(0.7, 1.0)
+        # --- 4. Grid Lines (Faint Grey) ---
         grid_path = NSBezierPath.bezierPath()
-        grid_path.setLineWidth_(1.0)
-        grid_path.setLineDash_count_phase_([4.0, 4.0], 2, 0.0)
+        grid_path.setLineWidth_(0.5)
+        grid_path.setLineDash_count_phase_([2.0, 2.0], 2, 0.0)
         
-        # Font Attributes
         axis_font = NSFont.systemFontOfSize_(10)
+        # Using dark grey for text
+        text_color = NSColor.colorWithCalibratedWhite_alpha_(0.3, 1.0) 
+        
         axis_attrs = {
             NSFontAttributeName: axis_font, 
-            NSForegroundColorAttributeName: NSColor.blackColor()
+            NSForegroundColorAttributeName: text_color
         }
-        # Right aligned for Y-axis labels
         p_style = NSMutableParagraphStyle.alloc().init()
         p_style.setAlignment_(2) # Right
         y_label_attrs = {
             NSFontAttributeName: axis_font, 
-            NSForegroundColorAttributeName: NSColor.blackColor(),
+            NSForegroundColorAttributeName: text_color,
             NSParagraphStyleAttributeName: p_style
         }
 
         for val in grid_values:
             y = get_y(val)
             if y >= margin_bottom and y <= height - margin_top:
-                # Line
                 grid_path.moveToPoint_((margin_left, y))
                 grid_path.lineToPoint_((width - margin_right, y))
                 
-                # Label
                 l_str = str(val)
                 s = NSString.stringWithString_(l_str).sizeWithAttributes_(y_label_attrs)
-                # Draw to left of axis
-                r = NSMakeRect(0, y - s.height/2, margin_left - 5, s.height)
+                # Shifted up slightly (+3) to be "upside"
+                r = NSMakeRect(0, y - s.height/2 + 3, margin_left - 5, s.height)
                 NSString.stringWithString_(l_str).drawInRect_withAttributes_(r, y_label_attrs)
                 
-        grid_color.set()
+        NSColor.colorWithCalibratedWhite_alpha_(0.85, 1.0).set() # Faint grey grid
         grid_path.stroke()
 
-        # --- 3. Axes (Solid Black) ---
-        axis_path = NSBezierPath.bezierPath()
-        axis_path.setLineWidth_(1.5)
-        # Y Axis
-        axis_path.moveToPoint_((margin_left, margin_bottom))
-        axis_path.lineToPoint_((margin_left, height - margin_top))
-        # X Axis
-        axis_path.moveToPoint_((margin_left, margin_bottom))
-        axis_path.lineToPoint_((width - margin_right, margin_bottom))
+        # --- 5. Axes Vertical Line (Divider) ---
+        # Drawing a solid vertical line at the right end of the plot (optional, like reference image?)
+        # Reference has a vertical line indicating "Now" or current time. 
+        # We can just draw axes as usual or minimal.
         
-        NSColor.blackColor().set()
-        axis_path.stroke()
-        
-        # Axis Titles
-        # Y Title "(mg/dL)" or "(mmol/L)"
-        title_str = "(mmol/L)" if is_mmol else "(mg/dL)"
-        t_size = NSString.stringWithString_(title_str).sizeWithAttributes_(axis_attrs)
-        # Draw upright above Y axis
-        NSString.stringWithString_(title_str).drawAtPoint_withAttributes_((5, height - margin_top + 5), axis_attrs)
-        
-        # X Title "Time" - Bottom Center
-        x_title = "Time"
-        xt_size = NSString.stringWithString_(x_title).sizeWithAttributes_(axis_attrs)
-        NSString.stringWithString_(x_title).drawAtPoint_withAttributes_((margin_left + plot_width/2 - xt_size.width/2, 5), axis_attrs)
-
-
-        # --- 4. Data Plot ---
+        # --- 6. Data Plot ---
         if len(self.data_points) < 2: return
         
         points_coords = []
         count = len(self.data_points)
         
-        # Calculate coords
         for i in range(count):
             val, ts = self.data_points[i]
             disp_val = val / factor
@@ -323,31 +282,27 @@ class CustomGraphView(NSView):
             y = get_y(disp_val)
             points_coords.append((x, y, disp_val, ts, val))
 
-        # A. Connection Line (Black)
+        # A. Connection Line (Solid Dark Blue)
         line_path = NSBezierPath.bezierPath()
         for i, (x, y, _, _, _) in enumerate(points_coords):
             if i == 0: line_path.moveToPoint_((x, y))
             else: line_path.lineToPoint_((x, y))
             
-        NSColor.blackColor().set()
-        line_path.setLineWidth_(2.0)
+        # Dark Blue #003f5c
+        NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.25, 0.36, 1.0).set()
+        line_path.setLineWidth_(3.0)
+        line_path.setLineCapStyle_(1) # Round
+        line_path.setLineJoinStyle_(1) # Round
         line_path.stroke()
         
-        # B. End Dot Only
-        if points_coords:
-            x, y, _, _, raw_val = points_coords[-1]
-            dot_rect = NSMakeRect(x - 4, y - 4, 8, 8)
-            dot_path = NSBezierPath.bezierPathWithOvalInRect_(dot_rect)
-            
-            # Fill with status color
-            c = self.get_color(raw_val)
-            c.set()
-            dot_path.fill()
-            
-            # Border
-            NSColor.blackColor().set()
-            dot_path.setLineWidth_(1.5)
-            dot_path.stroke()
+        # B. End Dot? (Reference shows end dot? No, reference doesn't show clearer dots on line, maybe end one)
+        # User said "show only line". So NO dots.
+
+        # 7. Save coords for hover
+        clean_coords = []
+        for p in points_coords:
+            clean_coords.append((p[0], p[1], p[2], p[3]))
+        self.points_coords = clean_coords
 
         # 5. Save coords for hover
         clean_coords = []
@@ -368,7 +323,8 @@ class CustomGraphView(NSView):
                     # HH
                     t_lbl = dt.strftime("%H")
                     s = NSString.stringWithString_(t_lbl).sizeWithAttributes_(axis_attrs)
-                    r = NSMakeRect(x - s.width/2, margin_bottom - 15, s.width, s.height)
+                    # Shifted down slightly - using margin_bottom-25
+                    r = NSMakeRect(x - s.width/2, margin_bottom - 25, s.width, s.height)
                     NSString.stringWithString_(t_lbl).drawInRect_withAttributes_(r, axis_attrs)
                     
                     # Tick mark
@@ -379,10 +335,10 @@ class CustomGraphView(NSView):
                     tick.stroke()
                 except: pass
                 
-        # Hover Line (Black)
+        # Hover Line
         if self.hover_point:
              hx, hy = self.hover_point
-             NSColor.blackColor().set()
+             NSColor.labelColor().set()
              path = NSBezierPath.bezierPathWithRect_(NSMakeRect(hx-0.5, margin_bottom, 1, plot_height))
              path.fill()
 
@@ -437,14 +393,13 @@ class CustomGraphView(NSView):
             val_len = len(val_str)
             val_font = NSFont.boldSystemFontOfSize_(15.0)
             attr_str.addAttribute_value_range_(NSFontAttributeName, val_font, (0, val_len))
-            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, NSColor.blackColor(), (0, val_len))
+            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, NSColor.whiteColor(), (0, val_len))
             
             # Date Attributes (next part)
             date_range = (val_len + 1, len(formatted_date))
             date_font = NSFont.systemFontOfSize_(10.0)
             attr_str.addAttribute_value_range_(NSFontAttributeName, date_font, date_range)
-            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, NSColor.blackColor(), date_range) # or gray
-            
+            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, NSColor.whiteColor(), date_range)             
             self.tooltip.setAttributedStringValue_(attr_str)
             
             # Position tooltip
@@ -474,6 +429,47 @@ class CustomGraphView(NSView):
     def acceptsFirstMouse_(self, event):
         return True
 
+class CustomGraphView(NSView):
+    def initWithFrame_(self, frame):
+        self = objc.super(CustomGraphView, self).initWithFrame_(frame)
+        if self:
+            # 1. Background (Solid White handled by PlotView or just let it be transparent and PlotView fills)
+            # We just need the plot view now.
+            
+            # 2. Plot View (Content)
+            self.plot_view = GraphPlotView.alloc().initWithFrame_(self.bounds())
+            self.plot_view.setAutoresizingMask_(18)
+            self.addSubview_(self.plot_view)
+            
+        return self
+        
+    def update_data(self, data):
+        if hasattr(self, 'plot_view'):
+            self.plot_view.update_data(data)
+        
+    @property
+    def unit(self):
+        if hasattr(self, 'plot_view'):
+            return self.plot_view.unit
+        return "mg/dL"
+        
+    @unit.setter
+    def unit(self, val):
+        if hasattr(self, 'plot_view'):
+            self.plot_view.unit = val
+        
+    def setNeedsDisplay_(self, flag):
+        if hasattr(self, 'plot_view'):
+             self.plot_view.setNeedsDisplay_(flag)
+        objc.super(CustomGraphView, self).setNeedsDisplay_(flag)
+
+    def viewDidMoveToWindow(self):
+        # Try to remove the system padding/chrome look by making the window white
+        if self.window():
+            self.window().setBackgroundColor_(NSColor.whiteColor())
+            # self.window().setTitleVisibility_(1) # NSWindowTitleHidden = 1
+            # self.window().setTitlebarAppearsTransparent_(True)
+
 class MenuDelegate(NSObject):
     def initWithApp_(self, app):
          self = objc.super(MenuDelegate, self).init()
@@ -484,6 +480,9 @@ class MenuDelegate(NSObject):
         # Trigger update when menu opens
         # This spawns a thread so it won't block open
         self.app.update_glucose(None)
+
+# Set to True to use fake data and avoid API rate limits
+USE_DUMMY_DATA = False
 
 class GlucoseApp(rumps.App):
     TREND_ARROWS = {
@@ -514,7 +513,8 @@ class GlucoseApp(rumps.App):
         # Setup Status Bar Menu with Graph
         # We need a dummy menu item to hold the view
         self.graph_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("", None, "")
-        self.graph_view = CustomGraphView.alloc().initWithFrame_(NSMakeRect(0, 0, 300, 150))
+        # Updated to 450x250 for better visibility
+        self.graph_view = CustomGraphView.alloc().initWithFrame_(NSMakeRect(0, 0, 450, 250))
         self.graph_view.unit = self.config.get("unit", "mg/dL")
         self.graph_item.setView_(self.graph_view)
         
@@ -680,20 +680,113 @@ class GlucoseApp(rumps.App):
             pass
 
     def refresh_now(self, sender):
+        # Allow manual refresh to bypass debounce slightly? 
+        # No, enforce strict debounce to save user from ban
         self.update_glucose(sender)
 
     def update_glucose(self, sender):
+        # Debounce: Ensure at least 45 seconds between calls
+        now = time.time()
+        last = getattr(self, 'last_fetch_time', 0)
+        if now - last < 45:
+             print(f"Skipping update (Debounce: {int(45 - (now - last))}s remaining)")
+             return
+             
+        self.last_fetch_time = now
+        
         # Run in a separate thread to avoid blocking the UI
         thread = threading.Thread(target=self._fetch_and_update)
         thread.start()
 
     def _fetch_and_update(self):
         try:
-            data = self.client.get_latest_glucose()
-            self.data_queue.put(data)
+            if USE_DUMMY_DATA:
+                print("Generating dummy data...")
+                data = self.generate_dummy_data()
+                # Simulate network delay
+                time.sleep(0.5)
+            else:
+                if not self.client:
+                   self.client = LibreClient()
+                
+                print("Fetching glucose data...")
+                # Pass retry=True to handle re-login automatically
+                data = self.client.get_latest_glucose(retry=True)
+
+            if data:
+                self.data_queue.put(data)
+            else:
+                self.data_queue.put(None)
+                
         except Exception as e:
-            # Optionally signal error to UI or just log silently
-            pass
+            print(f"Error fetching glucose: {e}")
+            self.data_queue.put(None)
+
+    def generate_dummy_data(self):
+        # Generate a sine wave pattern mixed with random noise
+        # This creates a realistic looking smooth curve
+        import math
+        import random
+        from datetime import datetime, timedelta
+        
+        # Use a fixed reference start so graph is stable-ish or moving?
+        # Let's use current time for moving graph
+        now = datetime.now()
+        base_glucose = 120
+        amplitude = 40
+        period_minutes = 120 # 2 hour cycle
+        
+        # Calculate current value based on time
+        minutes = now.hour * 60 + now.minute
+        val = base_glucose + amplitude * math.sin(2 * math.pi * minutes / period_minutes)
+        # Add small noise
+        val += random.uniform(-5, 5)
+        
+        # Trend arrow (derivative rough approximation)
+        # Next value in 5 mins
+        next_minutes = minutes + 5
+        next_val = base_glucose + amplitude * math.sin(2 * math.pi * next_minutes / period_minutes)
+        diff = next_val - val
+        
+        if diff > 2: trend = 1 # Rising quickly
+        elif diff > 1: trend = 2 # Rising
+        elif diff < -2: trend = 5 # Falling quickly
+        elif diff < -1: trend = 4 # Falling
+        else: trend = 3 # Stable
+        
+        # Color
+        color = 1 # Green
+        if val > 180 or val < 70: color = 2 # Yellow
+        if val > 240 or val < 54: color = 3 # Red
+        
+        # Graph History (past 4 hours)
+        history = []
+        for i in range(50): # 50 points * 5 mins roughly = 4 hours
+            t_offset = i * 5
+            hist_time = now - timedelta(minutes=t_offset)
+            h_mins = hist_time.hour * 60 + hist_time.minute
+            
+            h_val = base_glucose + amplitude * math.sin(2 * math.pi * h_mins / period_minutes)
+            h_val += random.uniform(-3, 3)
+            
+            # Format timestamp as expected by API: "1/31/2026 8:25:41 AM"
+            ts_str = hist_time.strftime("%-m/%-d/%Y %-I:%M:%S %p")
+            
+            history.append({
+                'Value': h_val,
+                'Timestamp': ts_str
+            })
+            
+        history.reverse() # Oldest first
+        
+        return {
+            'Value': val,
+            'Trend': trend,
+            'TrendArrow': trend, # For compatibility
+            'Color': color,
+            'GraphData': history,
+            'Unit': self.config.get("unit", "mg/dL") 
+        }
             
     def _update_ui_with_data(self, data):
         try:
