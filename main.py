@@ -12,7 +12,7 @@ from AppKit import (NSImage, NSApplication, NSMenu, NSMenuItem, NSObject, NSView
                    NSMutableAttributedString, NSFontAttributeName, NSForegroundColorAttributeName,
                    NSParagraphStyleAttributeName, NSMutableParagraphStyle, NSWorkspace,
                    NSVisualEffectView, NSVisualEffectMaterialHUDWindow, NSVisualEffectBlendingModeBehindWindow,
-                   NSVisualEffectStateActive, NSVisualEffectMaterialPopover)
+                   NSVisualEffectStateActive, NSVisualEffectMaterialPopover, NSAppearance)
 from Foundation import NSMakeRect, NSURL
 import objc
 
@@ -94,23 +94,39 @@ class GraphPlotView(NSView):
                 self.bounds(), options, self, None)
             self.addTrackingArea_(tracking_area)
             
-            # Tooltip text field - Pill Shape
-            self.tooltip = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 100, 35))
-            self.tooltip.setBezeled_(False)
-            self.tooltip.setDrawsBackground_(False)
-            self.tooltip.setBackgroundColor_(NSColor.clearColor())
-            self.tooltip.setTextColor_(NSColor.whiteColor()) # White text
-            self.tooltip.setEditable_(False)
-            self.tooltip.setSelectable_(False)
-            self.tooltip.setHidden_(True)
-            self.tooltip.setWantsLayer_(True)
-            self.tooltip.layer().setCornerRadius_(8)
-            self.tooltip.layer().setShadowOpacity_(0.2)
-            self.tooltip.layer().setShadowOffset_((0, -2))
-            self.tooltip.layer().setShadowRadius_(4)
-            # Dark Blue Background #003f5c with 0.6 alpha for more transparent glass effect
-            self.tooltip.layer().setBackgroundColor_(NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.25, 0.36, 0.6).CGColor())
-            self.addSubview_(self.tooltip)
+            # Tooltip Container - Glass Effect (NSVisualEffectView)
+            # Use raw integers for Material: 2 = Popover (Light), 0 = HUD (Dark), 8 = ToolTip
+            # BlendingMode: 1 = WithinWindow
+            self.tooltip_container = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(0, 0, 130, 45))
+            self.tooltip_container.setMaterial_(1) # Light
+            self.tooltip_container.setBlendingMode_(1) # WithinWindow
+            self.tooltip_container.setState_(1) # Active
+            # Force Light Appearance (VibrantLight) to ensure glass look isn't gray/dark
+            self.tooltip_container.setAppearance_(NSAppearance.appearanceNamed_("NSAppearanceNameVibrantLight"))
+            self.tooltip_container.setWantsLayer_(True)
+            self.tooltip_container.layer().setCornerRadius_(12)
+            self.tooltip_container.layer().setMasksToBounds_(True)
+            self.tooltip_container.setHidden_(True)
+            
+            # Add shadow to container view (requires not masking bounds for shadow? 
+            # NSVisualEffectView clipping makes shadow tricky. 
+            # Ideally we wrap VE in a clear view with shadow, OR just rely on VE internal look. 
+            # Let's try adding shadow to the VE layer first, but setMasksToBounds might clip it.
+            # Let's SKIP shadow on the VE for this pass to ensure the BLUR works, 
+            # or wrap it. A simple pill blur is often good enough for "iOS style".
+            
+            # Tooltip Label (Text Content)
+            self.tooltip_label = NSTextField.alloc().initWithFrame_(self.tooltip_container.bounds())
+            self.tooltip_label.setBezeled_(False)
+            self.tooltip_label.setDrawsBackground_(False)
+            self.tooltip_label.setBackgroundColor_(NSColor.clearColor())
+            self.tooltip_label.setEditable_(False)
+            self.tooltip_label.setSelectable_(False)
+            # Autoresize with container
+            self.tooltip_label.setAutoresizingMask_(18) # Width+Height resizable
+            
+            self.tooltip_container.addSubview_(self.tooltip_label)
+            self.addSubview_(self.tooltip_container)
             
         return self
 
@@ -180,11 +196,11 @@ class GraphPlotView(NSView):
         y_range = max_y_val - min_y_val
         
         # Margins (Optimized)
-        margin_left = 35
+        margin_left = 45 # Increased padding on left
         margin_right = 20
         # Reduced margins safely to remove unused space
         margin_top = 20 
-        margin_bottom = 35
+        margin_bottom = 25 # Reduced padding from bottom
         
         plot_width = width - margin_left - margin_right
         plot_height = height - margin_bottom - margin_top
@@ -371,40 +387,73 @@ class GraphPlotView(NSView):
                 val_str = str(int(val))
 
             # Formatting Date
-            # Input format example: "1/31/2026 8:25:41 AM"
             formatted_date = str(ts)
             try:
                 from datetime import datetime
-                # Parse
                 dt_obj = datetime.strptime(ts, "%m/%d/%Y %I:%M:%S %p")
-                # Format to ddmmyyyy (or dd.mm.yyyy) + time
-                formatted_date = dt_obj.strftime("%d.%m.%Y %H:%M")
-            except Exception as e:
-                pass # Keep original string on failure
+                # Format: "Yesterday • 11:05" or just "11:05" or "Day • Time"
+                # User wants "Time below value". Reference shows "Yesterday • 11:05"
+                # Let's try to match reference style
+                now = datetime.now()
+                # Simple relative check
+                if dt_obj.date() == now.date():
+                    # User request: Remove "Today", just show time
+                    date_str = dt_obj.strftime("%H:%M")
+                elif dt_obj.date() == (now.date() - datetime.timedelta(days=1)):
+                    day_str = "Yesterday"
+                    time_str = dt_obj.strftime("%H:%M")
+                    date_str = f"{day_str} • {time_str}"
+                else:
+                    day_str = dt_obj.strftime("%b %d")
+                    time_str = dt_obj.strftime("%H:%M")
+                    date_str = f"{day_str} • {time_str}"
+            except:
+                date_str = ts
 
             # Create Attributed String
-            # Value: 15pt (75% of 20)
-            # Date: 10pt (50% of 20)
-            
-            full_str = f"{val_str}\n{formatted_date}"
+            # "68 mg/dl\nToaday • 11:05"
+            full_str = f"{val_str} {unit}\n{date_str}"
             attr_str = NSMutableAttributedString.alloc().initWithString_(full_str)
             
-            # Value Attributes (0 to len(val_str))
-            val_len = len(val_str)
-            val_font = NSFont.boldSystemFontOfSize_(15.0)
-            attr_str.addAttribute_value_range_(NSFontAttributeName, val_font, (0, val_len))
-            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, NSColor.whiteColor(), (0, val_len))
+            # Paragraph Style for Centering
+            p_style = NSMutableParagraphStyle.alloc().init()
+            p_style.setAlignment_(1) # Center
+            # Add line height/spacing if needed
+            p_style.setLineSpacing_(2)
             
-            # Date Attributes (next part)
-            date_range = (val_len + 1, len(formatted_date))
-            date_font = NSFont.systemFontOfSize_(10.0)
-            attr_str.addAttribute_value_range_(NSFontAttributeName, date_font, date_range)
-            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, NSColor.whiteColor(), date_range)             
-            self.tooltip.setAttributedStringValue_(attr_str)
+            full_len = len(full_str)
+            attr_str.addAttribute_value_range_(NSParagraphStyleAttributeName, p_style, (0, full_len))
+
+            # Value Attributes (Dark Blue, Bold, Large)
+            # "68"
+            val_only_len = len(val_str)
+            val_font = NSFont.boldSystemFontOfSize_(16.0)
+            dark_blue = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.25, 0.36, 1.0)
+            attr_str.addAttribute_value_range_(NSFontAttributeName, val_font, (0, val_only_len))
+            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, dark_blue, (0, val_only_len))
+            
+            # Unit Attributes (Dark Blue, Regular, Medium)
+            # " mg/dl"
+            unit_start = val_only_len
+            unit_len = len(unit) + 1 # include space
+            unit_font = NSFont.systemFontOfSize_(14.0)
+            attr_str.addAttribute_value_range_(NSFontAttributeName, unit_font, (unit_start, unit_len))
+            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, dark_blue, (unit_start, unit_len))
+            
+            # Date Attributes (Grey, Regular, Small)
+            # "\nToday • 11:05"
+            date_start = unit_start + unit_len
+            date_len = len(full_str) - date_start
+            date_font = NSFont.systemFontOfSize_(11.0)
+            grey_color = NSColor.grayColor()
+            attr_str.addAttribute_value_range_(NSFontAttributeName, date_font, (date_start, date_len))
+            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, grey_color, (date_start, date_len))
+                         
+            self.tooltip_label.setAttributedStringValue_(attr_str)
             
             # Position tooltip
-            tooltip_width = 150
-            t_x = px + 10 # Default to right of point
+            tooltip_width = 105 # Reduced to 105 per user request to tighten padding
+            t_x = px + 10 
             
             # Check if it goes off screen
             view_width = self.bounds().size.width
@@ -418,12 +467,12 @@ class GraphPlotView(NSView):
             # Increase height check for multi-line tooltip
             if t_y > self.bounds().size.height - 40: t_y = py - 40
             
-            self.tooltip.setFrameOrigin_((t_x, t_y))
+            self.tooltip_container.setFrameOrigin_((t_x, t_y))
             # Resize tooltip frame to fit content
-            self.tooltip.setFrameSize_(NSMakeRect(0, 0, tooltip_width, 50).size)
-            self.tooltip.setHidden_(False)
+            self.tooltip_container.setFrameSize_(NSMakeRect(0, 0, tooltip_width, 45).size)
+            self.tooltip_container.setHidden_(False)
         else:
-            self.tooltip.setHidden_(True)
+            self.tooltip_container.setHidden_(True)
             
     # Required for events
     def acceptsFirstMouse_(self, event):
