@@ -128,6 +128,10 @@ class GraphPlotView(NSView):
             self.tooltip_container.addSubview_(self.tooltip_label)
             self.addSubview_(self.tooltip_container)
             
+
+
+            self.trend = 3 # Default Stable
+            
         return self
 
     def get_color(self, value):
@@ -143,6 +147,10 @@ class GraphPlotView(NSView):
             return NSColor.orangeColor()
         else: # > 250
             return NSColor.redColor()
+
+    def set_trend(self, trend):
+        self.trend = trend
+        self.setNeedsDisplay_(True)
 
     def update_data(self, data):
         # Data is list of dicts: {'Value': int, 'Timestamp': str}
@@ -313,6 +321,22 @@ class GraphPlotView(NSView):
         
         # B. End Dot? (Reference shows end dot? No, reference doesn't show clearer dots on line, maybe end one)
         # User said "show only line". So NO dots.
+
+        # Draw Trend Dot at the last point
+        last_x, last_y, _, _, last_val = points_coords[-1]
+        
+        dot_path = NSBezierPath.bezierPath()
+        dot_radius = 4.0
+        dot_rect = NSMakeRect(last_x - dot_radius, last_y - dot_radius, dot_radius * 2, dot_radius * 2)
+        dot_path.appendBezierPathWithOvalInRect_(dot_rect)
+        
+        # Trend Color
+        # User requested "color as per blood sugar values".
+        # So we use get_color(value) for the dot.
+        dot_color = self.get_color(last_val)
+             
+        dot_color.set()
+        dot_path.fill()
 
         # 7. Save coords for hover
         clean_coords = []
@@ -506,6 +530,10 @@ class CustomGraphView(NSView):
     def unit(self, val):
         if hasattr(self, 'plot_view'):
             self.plot_view.unit = val
+    
+    def set_trend(self, trend):
+        if hasattr(self, 'plot_view'):
+            self.plot_view.set_trend(trend)
         
     def setNeedsDisplay_(self, flag):
         if hasattr(self, 'plot_view'):
@@ -797,10 +825,12 @@ class GlucoseApp(rumps.App):
         next_val = base_glucose + amplitude * math.sin(2 * math.pi * next_minutes / period_minutes)
         diff = next_val - val
         
-        if diff > 2: trend = 1 # Rising quickly
-        elif diff > 1: trend = 2 # Rising
-        elif diff < -2: trend = 5 # Falling quickly
-        elif diff < -1: trend = 4 # Falling
+        # Trend arrow (derivative rough approximation)
+        # 1: ↓, 2: ↘, 3: →, 4: ↗, 5: ↑
+        if diff > 2: trend = 5 # Rising quickly (↑)
+        elif diff > 1: trend = 4 # Rising (↗)
+        elif diff < -2: trend = 1 # Falling quickly (↓)
+        elif diff < -1: trend = 2 # Falling (↘)
         else: trend = 3 # Stable
         
         # Color
@@ -859,6 +889,9 @@ class GlucoseApp(rumps.App):
                 self.graph_view.update_data(graph_data)
                 
             trend = data.get("TrendArrow")
+            if hasattr(self, 'graph_view'):
+                self.graph_view.set_trend(trend)
+
             arrow = self.TREND_ARROWS.get(trend, "")
             
             # Unit Handling
