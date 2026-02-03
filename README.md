@@ -9,7 +9,12 @@ Schugaa is a lightweight, native macOS menu bar application that displays real-t
 ## Features ✨
 
 - **Menu Bar Widget**: View your latest glucose value and trend arrow directly in the macOS menu bar.
+- **Sensor Status Tracking**: Real-time sensor monitoring with:
+  - **Warmup Display**: Shows "Warming up (X min)" during the 60-minute sensor warmup period
+  - **Expiration Countdown**: Displays days remaining until sensor expires (14-day lifecycle)
+  - **Expired Warning**: Visual alert when sensor needs replacement
 - **Interactive Graph**: Click the menu item to view a beautiful, native interactive graph of your recent history. Hover over points to see exact values and timestamps.
+- **Cream-Colored Status Bar**: Stylish cream background for the status display showing glucose status, last updated time, and sensor information all in one line.
 - **Unit Conversion**: Supports both **mg/dL** and **mmol/L**. Switch instantly via the menu.
 - **Auto-Refresh**: Data automatically refreshes in the background (every 5 minutes) and immediately when you open the menu.
 - **Region Support**: Compatible with LibreView accounts worldwide (EU, Global, DE, FR, JP, AP, AE, UK, etc.).

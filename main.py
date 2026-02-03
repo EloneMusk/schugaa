@@ -950,9 +950,13 @@ class GlucoseApp(rumps.App):
         
         history.reverse() # Oldest first
         
-        # Sensor data (simulate a sensor with 10 days remaining)
-        sensor_activated = int(time.time()) - (4 * 24 * 60 * 60)  # Activated 4 days ago
-        sensor_expires = sensor_activated + (14 * 24 * 60 * 60)  # Expires in 10 days
+        # Sensor data - OPTION 1: Simulate warmup (activated 30 minutes ago)
+        sensor_activated = int(time.time()) - (30 * 60)  # Activated 30 mins ago
+        sensor_expires = sensor_activated + (14 * 24 * 60 * 60)  # Expires in ~14 days
+        
+        # OPTION 2: Simulate normal sensor (uncomment to test)
+        # sensor_activated = int(time.time()) - (4 * 24 * 60 * 60)  # Activated 4 days ago
+        # sensor_expires = sensor_activated + (14 * 24 * 60 * 60)  # Expires in 10 days
         
         return {
             'Value': val,
@@ -1088,8 +1092,40 @@ class GlucoseApp(rumps.App):
                 # Update status with sensor info combined
                 if hasattr(self, "status_label"):
                     sensor_text = "--"
+                    sensor_activated = data.get("SensorActivated")
                     sensor_expires = data.get("SensorExpires")
-                    if sensor_expires:
+                    
+                    if sensor_activated:
+                        now_ts = time.time()
+                        # LibreLink sensors have 60-minute warmup period
+                        warmup_duration = 60 * 60  # 60 minutes in seconds
+                        warmup_end = sensor_activated + warmup_duration
+                        
+                        # Check if sensor is still warming up
+                        if now_ts < warmup_end:
+                            minutes_remaining = int((warmup_end - now_ts) / 60)
+                            if minutes_remaining == 0:
+                                sensor_text = "Warming up (<1 min)"
+                            elif minutes_remaining == 1:
+                                sensor_text = "Warming up (1 min)"
+                            else:
+                                sensor_text = f"Warming up ({minutes_remaining} min)"
+                        elif sensor_expires:
+                            # Warmup complete, show expiration countdown
+                            days_remaining = (sensor_expires - now_ts) / (24 * 60 * 60)
+                            
+                            if days_remaining > 0:
+                                days_int = int(days_remaining)
+                                if days_int == 0:
+                                    sensor_text = "<1 day"
+                                elif days_int == 1:
+                                    sensor_text = "1 day"
+                                else:
+                                    sensor_text = f"{days_int} days"
+                            else:
+                                sensor_text = "Expired ⚠️"
+                    elif sensor_expires:
+                        # Fallback if activation time not available
                         now_ts = time.time()
                         days_remaining = (sensor_expires - now_ts) / (24 * 60 * 60)
                         
