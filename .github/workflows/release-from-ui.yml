@@ -35,6 +35,28 @@ jobs:
           fetch-depth: 0
 
       # ----------------------------
+      # Setup Python (CRITICAL)
+      # ----------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      # ----------------------------
+      # Install Python dependencies (CRITICAL FIX)
+      # ----------------------------
+      - name: Install Python dependencies
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "⚠️ requirements.txt not found"
+          fi
+
+      # ----------------------------
       # Create version tag (manual only)
       # ----------------------------
       - name: Create Git tag
@@ -45,7 +67,6 @@ jobs:
             echo "❌ Tag $TAG already exists"
             exit 1
           }
-          echo "Creating tag $TAG"
           git tag "$TAG"
           git push origin "$TAG"
 
@@ -78,21 +99,20 @@ jobs:
         run: chmod +x package.sh
 
       # ----------------------------
-      # Build DMG (uses auto-detected .app path)
+      # Build DMG
       # ----------------------------
       - name: Build DMG
         run: ./package.sh
 
       # ----------------------------
-      # Sanity check (prevents broken 8 MB DMG)
+      # Sanity check (detect broken builds)
       # ----------------------------
-      - name: Verify DMG size
+      - name: Verify build output
         run: |
-          echo "📦 DMG files:"
+          echo "=== dist contents ==="
+          find dist -maxdepth 3
+          echo "=== DMG files ==="
           ls -lh *.dmg dist/*.dmg || true
-
-          SIZE=$(ls -lh *.dmg dist/*.dmg | awk '{print $5}')
-          echo "DMG size(s): $SIZE"
 
       # ----------------------------
       # Upload CI artifact (commit builds)
