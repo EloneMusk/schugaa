@@ -1,35 +1,63 @@
-name: Create Tag, Build & Release macOS DMG
+name: Build & Release macOS DMG
 
 on:
+  # 🔁 CI on commits
+  push:
+    branches:
+      - main
+      - develop
+
+  # 🖱️ Manual versioned release
   workflow_dispatch:
     inputs:
       version:
         description: "Version number (example: 1.2.3)"
         required: true
 
+  # 🌙 Nightly build
+  schedule:
+    - cron: "0 2 * * *" # every day at 02:00 UTC
+
 permissions:
-  contents: write   # REQUIRED for tags + releases
+  contents: write
 
 jobs:
-  release:
+  build:
     runs-on: macos-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # REQUIRED to create tags
+          fetch-depth: 0
 
+      # ----------------------------
+      # Tag creation (manual only)
+      # ----------------------------
       - name: Create Git tag
+        if: github.event_name == 'workflow_dispatch'
         run: |
           TAG="v${{ github.event.inputs.version }}"
-          git tag $TAG
-          git push origin $TAG
+          git tag "$TAG"
+          git push origin "$TAG"
 
-      - name: Checkout tag
+      # ----------------------------
+      # Nightly tag handling
+      # ----------------------------
+      - name: Create or update nightly tag
+        if: github.event_name == 'schedule'
+        run: |
+          git tag -f nightly
+          git push origin nightly --force
+
+      # ----------------------------
+      # Checkout correct ref
+      # ----------------------------
+      - name: Checkout correct ref
         uses: actions/checkout@v4
         with:
-          ref: v${{ github.event.inputs.version }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', github.event.inputs.version) || github.event_name == 'schedule' && 'nightly' || github.ref }}
+          fetch-depth: 0
 
       - name: Make package.sh executable
         run: chmod +x package.sh
@@ -37,7 +65,48 @@ jobs:
       - name: Build DMG
         run: ./package.sh
 
-      - name: Create GitHub Release & Upload DMG
+      # ----------------------------
+      # Upload CI artifact (commits)
+      # ----------------------------
+      - name: Upload CI DMG artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg-ci
+          path: |
+            *.dmg
+            dist/*.dmg
+
+      # ----------------------------
+      # Nightly release
+      # ----------------------------
+      - name: Get current date
+        id: date
+        if: github.event_name == 'schedule'
+        run: echo "date=$(date -u +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_OUTPUT
+
+      - name: Publish Nightly Release
+        if: github.event_name == 'schedule'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly Build
+          prerelease: true
+          body: |
+            🌙 **Nightly build**
+            - Commit: ${{ github.sha }}
+            - Date: ${{ steps.date.outputs.date }}
+          files: |
+            *.dmg
+            dist/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ----------------------------
+      # Versioned release (manual)
+      # ----------------------------
+      - name: Publish Versioned Release
+        if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.event.inputs.version }}
