@@ -194,10 +194,15 @@ class LibreClient:
             # Get Data
             # Note: Library returns objects, we need to convert to dict structure main.py expects
             
+            # Get full graph response to access sensor data
+            graph_response = self.client._get_graph_data_json(patient_id)
+            from pylibrelinkup.models.connection import GraphResponse
+            graph_obj = GraphResponse.model_validate(graph_response)
+            
             # 1. Latest
-            latest = self.client.latest(patient_id)
+            latest = graph_obj.current
             # 2. Graph
-            history = self.client.graph(patient_id) or []
+            history = graph_obj.history or []
             
             if not latest:
                 return None
@@ -236,13 +241,34 @@ class LibreClient:
                         "FactoryTimestamp": latest.factory_timestamp.isoformat()
                     })
             
+            # Extract sensor activation time
+            sensor_activated = None
+            sensor_expires = None
+            try:
+                sensor = graph_obj.data.connection.sensor
+                if sensor and sensor.a:
+                    # sensor.a is activation timestamp in seconds
+                    sensor_activated = sensor.a
+                    # LibreLink sensors last 14 days (14 * 24 * 60 * 60 seconds)
+                    sensor_expires = sensor.a + (14 * 24 * 60 * 60)
+            except Exception as e:
+                print(f"Could not extract sensor data: {e}")
+            
             # Latest
-            return {
+            result = {
                 "Value": latest.value,
                 "TrendArrow": latest.trend.value, # Int value for arrow
                 "Timestamp": fmt_ts(latest.timestamp),
                 "GraphData": gdata
             }
+            
+            # Add sensor info if available
+            if sensor_activated:
+                result["SensorActivated"] = sensor_activated
+            if sensor_expires:
+                result["SensorExpires"] = sensor_expires
+                
+            return result
             
         except Exception as e:
             print(f"Glucose fetch error: {e}")

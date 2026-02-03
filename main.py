@@ -659,9 +659,32 @@ class GlucoseApp(rumps.App):
         
         # Wait, rumps builds the menu on run? No, self._menu is initialized in App.__init__
         self._menu._menu.addItem_(self.graph_item)
-        self.status_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Status: OK   Last updated: --", None, "")
-        self.status_item.setEnabled_(False)
-        self._menu._menu.addItem_(self.status_item)
+        
+        # Create custom status item with cream background
+        self.status_menu_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("", None, "")
+        self.status_menu_item.setEnabled_(False)
+        
+        # Create a view for the status item with cream background
+        # Match graph width (450px) and increase height to eliminate bottom padding
+        status_view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 450, 22))
+        status_view.setWantsLayer_(True)
+        # Cream color (RGB: 255, 253, 208)
+        cream_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.992, 0.816, 1.0)
+        status_view.layer().setBackgroundColor_(cream_color.CGColor())
+        
+        # Add text field to the view
+        self.status_label = NSTextField.alloc().initWithFrame_(NSMakeRect(5, 2, 440, 18))
+        self.status_label.setBezeled_(False)
+        self.status_label.setDrawsBackground_(False)
+        self.status_label.setEditable_(False)
+        self.status_label.setSelectable_(False)
+        self.status_label.setStringValue_("Status: OK   Last updated: --   Sensor: --")
+        self.status_label.setFont_(NSFont.systemFontOfSize_(13.0))
+        self.status_label.setTextColor_(NSColor.colorWithCalibratedWhite_alpha_(0.2, 1.0))
+        status_view.addSubview_(self.status_label)
+        
+        self.status_menu_item.setView_(status_view)
+        self._menu._menu.addItem_(self.status_menu_item)
         
         # Setup Delegate to refresh on open
         self.menu_delegate = MenuDelegate.alloc().initWithApp_(self)
@@ -924,8 +947,12 @@ class GlucoseApp(rumps.App):
                 'Value': h_val,
                 'Timestamp': ts_str
             })
-            
+        
         history.reverse() # Oldest first
+        
+        # Sensor data (simulate a sensor with 10 days remaining)
+        sensor_activated = int(time.time()) - (4 * 24 * 60 * 60)  # Activated 4 days ago
+        sensor_expires = sensor_activated + (14 * 24 * 60 * 60)  # Expires in 10 days
         
         return {
             'Value': val,
@@ -933,7 +960,9 @@ class GlucoseApp(rumps.App):
             'TrendArrow': trend, # For compatibility
             'Color': color,
             'GraphData': history,
-            'Unit': self.config.get("unit", "mg/dL") 
+            'Unit': self.config.get("unit", "mg/dL"),
+            'SensorActivated': sensor_activated,
+            'SensorExpires': sensor_expires
         }
             
     def _update_ui_with_data(self, data):
@@ -949,11 +978,12 @@ class GlucoseApp(rumps.App):
             if value is None:
                 if data.get("Error") == "rate_limit":
                     self.title = "Rate limited"
-                    if hasattr(self, "status_item"):
+                    if hasattr(self, "status_label"):
                          update_str = f"Status: Rate limited (retrying)"
                          if hasattr(self, "last_updated_at"):
                              update_str += f"   Last updated: {self.last_updated_at.strftime('%H:%M')}"
-                         self.status_item.setTitle_(update_str)
+                         update_str += "   Sensor: --"
+                         self.status_label.setStringValue_(update_str)
                     return
                 if self.title and "Created" not in self.title and "???" not in self.title:
                     return
@@ -1055,8 +1085,27 @@ class GlucoseApp(rumps.App):
             try:
                 from datetime import datetime
                 self.last_updated_at = datetime.now()
-                if hasattr(self, "status_item"):
-                    self.status_item.setTitle_(f"Status: OK   Last updated: {self.last_updated_at.strftime('%H:%M')}")
+                # Update status with sensor info combined
+                if hasattr(self, "status_label"):
+                    sensor_text = "--"
+                    sensor_expires = data.get("SensorExpires")
+                    if sensor_expires:
+                        now_ts = time.time()
+                        days_remaining = (sensor_expires - now_ts) / (24 * 60 * 60)
+                        
+                        if days_remaining > 0:
+                            days_int = int(days_remaining)
+                            if days_int == 0:
+                                sensor_text = "<1 day"
+                            elif days_int == 1:
+                                sensor_text = "1 day"
+                            else:
+                                sensor_text = f"{days_int} days"
+                        else:
+                            sensor_text = "Expired ⚠️"
+                    
+                    status_text = f"Status: OK   Last updated: {self.last_updated_at.strftime('%H:%M')}   Sensor: {sensor_text}"
+                    self.status_label.setStringValue_(status_text)
             except Exception:
                 pass
                  
