@@ -13,7 +13,9 @@ VOL_NAME="Schugaa Installer"
 # ----------------------------
 # Version (tag or dev)
 # ----------------------------
-if git describe --tags --dirty --always >/dev/null 2>&1; then
+if [[ -n "${BUILD_VERSION:-}" ]]; then
+  VERSION="$BUILD_VERSION"
+elif git describe --tags --dirty --always >/dev/null 2>&1; then
   VERSION="$(git describe --tags --dirty --always)"
 else
   VERSION="dev"
