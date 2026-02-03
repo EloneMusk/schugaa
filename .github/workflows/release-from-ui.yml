@@ -1,7 +1,7 @@
 name: Build & Release macOS DMG
 
 on:
-  # 🔁 CI on commits
+  # 🔁 CI build on every commit
   push:
     branches:
       - main
@@ -16,7 +16,7 @@ on:
 
   # 🌙 Nightly build
   schedule:
-    - cron: "0 2 * * *" # every day at 02:00 UTC
+    - cron: "0 2 * * *" # Daily at 02:00 UTC
 
 permissions:
   contents: write
@@ -26,23 +26,31 @@ jobs:
     runs-on: macos-latest
 
     steps:
+      # ----------------------------
+      # Checkout repository
+      # ----------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       # ----------------------------
-      # Tag creation (manual only)
+      # Create version tag (manual only)
       # ----------------------------
       - name: Create Git tag
         if: github.event_name == 'workflow_dispatch'
         run: |
           TAG="v${{ github.event.inputs.version }}"
+          git rev-parse "$TAG" >/dev/null 2>&1 && {
+            echo "❌ Tag $TAG already exists"
+            exit 1
+          }
+          echo "Creating tag $TAG"
           git tag "$TAG"
           git push origin "$TAG"
 
       # ----------------------------
-      # Nightly tag handling
+      # Create / update nightly tag
       # ----------------------------
       - name: Create or update nightly tag
         if: github.event_name == 'schedule'
@@ -56,17 +64,38 @@ jobs:
       - name: Checkout correct ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', github.event.inputs.version) || github.event_name == 'schedule' && 'nightly' || github.ref }}
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch'
+            && format('v{0}', github.event.inputs.version)
+            || github.event_name == 'schedule'
+            && 'nightly'
+            || github.ref }}
 
+      # ----------------------------
+      # Prepare build
+      # ----------------------------
       - name: Make package.sh executable
         run: chmod +x package.sh
 
+      # ----------------------------
+      # Build DMG (uses auto-detected .app path)
+      # ----------------------------
       - name: Build DMG
         run: ./package.sh
 
       # ----------------------------
-      # Upload CI artifact (commits)
+      # Sanity check (prevents broken 8 MB DMG)
+      # ----------------------------
+      - name: Verify DMG size
+        run: |
+          echo "📦 DMG files:"
+          ls -lh *.dmg dist/*.dmg || true
+
+          SIZE=$(ls -lh *.dmg dist/*.dmg | awk '{print $5}')
+          echo "DMG size(s): $SIZE"
+
+      # ----------------------------
+      # Upload CI artifact (commit builds)
       # ----------------------------
       - name: Upload CI DMG artifact
         if: github.event_name == 'push'
@@ -78,13 +107,17 @@ jobs:
             dist/*.dmg
 
       # ----------------------------
-      # Nightly release
+      # Nightly metadata
       # ----------------------------
-      - name: Get current date
-        id: date
+      - name: Set nightly metadata
         if: github.event_name == 'schedule'
-        run: echo "date=$(date -u +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_OUTPUT
+        run: |
+          echo "BUILD_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_ENV
+          echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
+      # ----------------------------
+      # Publish Nightly Release
+      # ----------------------------
       - name: Publish Nightly Release
         if: github.event_name == 'schedule'
         uses: softprops/action-gh-release@v2
@@ -94,8 +127,8 @@ jobs:
           prerelease: true
           body: |
             🌙 **Nightly build**
-            - Commit: ${{ github.sha }}
-            - Date: ${{ steps.date.outputs.date }}
+            - Commit: ${{ env.SHORT_SHA }}
+            - Date: ${{ env.BUILD_DATE }}
           files: |
             *.dmg
             dist/*.dmg
@@ -103,7 +136,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ----------------------------
-      # Versioned release (manual)
+      # Publish Versioned Release
       # ----------------------------
       - name: Publish Versioned Release
         if: github.event_name == 'workflow_dispatch'
