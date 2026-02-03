@@ -1,5 +1,7 @@
 # Schugaa 🩸
 
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/EloneMusk/schugaa/total?style=flat&logo=github&label=Downloads)
+
 Schugaa is a lightweight, native macOS menu bar application that displays real-time glucose levels from your Freestyle Libre sensor. It sits quietly in your menu bar, providing quick access to your current glucose reading, trend arrows, and a historical data graph.
 
 <p align="center">
