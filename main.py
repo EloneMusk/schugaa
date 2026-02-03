@@ -16,6 +16,60 @@ from AppKit import (NSImage, NSApplication, NSMenu, NSMenuItem, NSObject, NSView
 from Foundation import NSMakeRect, NSURL
 import objc
 
+MMOL_FACTOR = 18.0182
+
+def _get_keyring():
+    try:
+        import keyring  # type: ignore
+        return keyring
+    except Exception:
+        return None
+
+def get_keyring_password(email):
+    keyring = _get_keyring()
+    if not keyring or not email:
+        return None
+    try:
+        return keyring.get_password("schugaa", email)
+    except Exception:
+        return None
+
+def set_keyring_password(email, password):
+    keyring = _get_keyring()
+    if not keyring or not email or not password:
+        return False
+    try:
+        keyring.set_password("schugaa", email, password)
+        return True
+    except Exception:
+        return False
+
+def delete_keyring_password(email):
+    keyring = _get_keyring()
+    if not keyring or not email:
+        return False
+    try:
+        keyring.delete_password("schugaa", email)
+        return True
+    except Exception:
+        return False
+
+def unit_factor(unit):
+    return MMOL_FACTOR if unit == "mmol/L" else 1.0
+
+def to_display_value(value, unit):
+    if unit == "mmol/L":
+        return value / MMOL_FACTOR
+    return value
+
+def write_json_secure(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f, indent=4)
+    try:
+        os.chmod(path, 0o600)
+    except Exception:
+        pass
+
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
@@ -184,8 +238,9 @@ class GraphPlotView(NSView):
         height = rect.size.height
         
         # Dimensions & Scaling
-        is_mmol = getattr(self, 'unit', 'mg/dL') == 'mmol/L'
-        factor = 18.0182 if is_mmol else 1.0
+        unit = getattr(self, 'unit', 'mg/dL')
+        is_mmol = unit == 'mmol/L'
+        factor = unit_factor(unit)
         
         if is_mmol:
             max_y_val = 21.0
@@ -338,13 +393,7 @@ class GraphPlotView(NSView):
         dot_color.set()
         dot_path.fill()
 
-        # 7. Save coords for hover
-        clean_coords = []
-        for p in points_coords:
-            clean_coords.append((p[0], p[1], p[2], p[3]))
-        self.points_coords = clean_coords
-
-        # 5. Save coords for hover
+        # Save coords for hover
         clean_coords = []
         for p in points_coords:
             clean_coords.append((p[0], p[1], p[2], p[3]))
@@ -384,7 +433,8 @@ class GraphPlotView(NSView):
 
     def mouseMoved_(self, event):
         if not hasattr(self, 'points_coords') or not self.points_coords:
-            self.tooltip.setHidden_(True)
+            if hasattr(self, 'tooltip_container'):
+                self.tooltip_container.setHidden_(True)
             return
             
         loc = self.convertPoint_fromView_(event.locationInWindow(), None)
@@ -413,7 +463,7 @@ class GraphPlotView(NSView):
             # Formatting Date
             formatted_date = str(ts)
             try:
-                from datetime import datetime
+                from datetime import datetime, timedelta
                 dt_obj = datetime.strptime(ts, "%m/%d/%Y %I:%M:%S %p")
                 # Format: "Yesterday • 11:05" or just "11:05" or "Day • Time"
                 # User wants "Time below value". Reference shows "Yesterday • 11:05"
@@ -423,7 +473,7 @@ class GraphPlotView(NSView):
                 if dt_obj.date() == now.date():
                     # User request: Remove "Today", just show time
                     date_str = dt_obj.strftime("%H:%M")
-                elif dt_obj.date() == (now.date() - datetime.timedelta(days=1)):
+                elif dt_obj.date() == (now.date() - timedelta(days=1)):
                     day_str = "Yesterday"
                     time_str = dt_obj.strftime("%H:%M")
                     date_str = f"{day_str} • {time_str}"
@@ -572,7 +622,7 @@ class GlucoseApp(rumps.App):
 
     def __init__(self):
         # icon=None ensures no icon in the menu bar, only text
-        super(GlucoseApp, self).__init__("Created with Love", icon=None, quit_button=None)
+        super(GlucoseApp, self).__init__("Schugaa", icon=None, quit_button=None)
         self.config = self.load_config()
         self.client = LibreClient(
             self.config.get("email"), 
@@ -609,6 +659,9 @@ class GlucoseApp(rumps.App):
         
         # Wait, rumps builds the menu on run? No, self._menu is initialized in App.__init__
         self._menu._menu.addItem_(self.graph_item)
+        self.status_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Status: OK   Last updated: --", None, "")
+        self.status_item.setEnabled_(False)
+        self._menu._menu.addItem_(self.status_item)
         
         # Setup Delegate to refresh on open
         self.menu_delegate = MenuDelegate.alloc().initWithApp_(self)
@@ -691,8 +744,7 @@ class GlucoseApp(rumps.App):
 
     def set_unit(self, unit):
         self.config["unit"] = unit
-        with open(get_config_path(), "w") as f:
-            json.dump(self.config, f, indent=4)
+        write_json_secure(get_config_path(), self.config)
         
         # Update Graph View
         if hasattr(self, 'graph_view'):
@@ -706,6 +758,8 @@ class GlucoseApp(rumps.App):
         config_path = get_config_path()
         if os.path.exists(config_path):
             try:
+                if self.config and self.config.get("email"):
+                    delete_keyring_password(self.config.get("email"))
                 os.remove(config_path)
                 rumps.alert("Logged Out", "Your credentials have been removed. The application will now quit.")
                 rumps.quit_application()
@@ -737,6 +791,10 @@ class GlucoseApp(rumps.App):
                     config["password"] = base64.b64decode(config["password"]).decode('utf-8')
                 except:
                     pass
+            if not config.get("password") or config.get("password") == "__keyring__":
+                kr_pw = get_keyring_password(config.get("email"))
+                if kr_pw:
+                    config["password"] = kr_pw
 
             return config
         except Exception as e:
@@ -758,21 +816,24 @@ class GlucoseApp(rumps.App):
 
     def refresh_now(self, sender):
         # Allow manual refresh to bypass debounce slightly? 
-        # No, enforce strict debounce to save user from ban
-        self.update_glucose(sender)
+        # Allow manual refresh to bypass debounce slightly (still capped)
+        self.update_glucose(sender, force=True)
 
-    def update_glucose(self, sender):
+    def update_glucose(self, sender, force=False):
         # Debounce: Ensure at least 45 seconds between calls
         now = time.time()
         last = getattr(self, 'last_fetch_time', 0)
-        if now - last < 45:
-             print(f"Skipping update (Debounce: {int(45 - (now - last))}s remaining)")
-             return
+        if not force and now - last < 45:
+            print(f"Skipping update (Debounce: {int(45 - (now - last))}s remaining)")
+            return
+        if force and now - last < 10:
+            print(f"Skipping update (Force Debounce: {int(10 - (now - last))}s remaining)")
+            return
              
         self.last_fetch_time = now
         
         # Run in a separate thread to avoid blocking the UI
-        thread = threading.Thread(target=self._fetch_and_update)
+        thread = threading.Thread(target=self._fetch_and_update, daemon=True)
         thread.start()
 
     def _fetch_and_update(self):
@@ -784,7 +845,11 @@ class GlucoseApp(rumps.App):
                 time.sleep(0.5)
             else:
                 if not self.client:
-                   self.client = LibreClient()
+                   self.client = LibreClient(
+                       self.config.get("email"),
+                       self.config.get("password"),
+                       self.config.get("region", "eu")
+                   )
                 
                 print("Fetching glucose data...")
                 # Pass retry=True to handle re-login automatically
@@ -793,7 +858,11 @@ class GlucoseApp(rumps.App):
             if data:
                 self.data_queue.put(data)
             else:
-                self.data_queue.put(None)
+                if self.client and getattr(self.client, "last_error", None):
+                    err = self.client.last_error
+                    self.data_queue.put({"Error": err.get("type"), "Message": err.get("message")})
+                else:
+                    self.data_queue.put(None)
                 
         except Exception as e:
             print(f"Error fetching glucose: {e}")
@@ -878,6 +947,14 @@ class GlucoseApp(rumps.App):
 
             value = data.get("Value")
             if value is None:
+                if data.get("Error") == "rate_limit":
+                    self.title = "Rate limited"
+                    if hasattr(self, "status_item"):
+                         update_str = f"Status: Rate limited (retrying)"
+                         if hasattr(self, "last_updated_at"):
+                             update_str += f"   Last updated: {self.last_updated_at.strftime('%H:%M')}"
+                         self.status_item.setTitle_(update_str)
+                    return
                 if self.title and "Created" not in self.title and "???" not in self.title:
                     return
                 self.title = "???"
@@ -896,11 +973,8 @@ class GlucoseApp(rumps.App):
             
             # Unit Handling
             unit = self.config.get("unit", "mg/dL")
-            if unit == "mmol/L":
-                disp_val = value / 18.0182
-                val_str = f"{disp_val:.1f}"
-            else:
-                val_str = str(int(value))
+            disp_val = to_display_value(value, unit)
+            val_str = f"{disp_val:.1f}" if unit == "mmol/L" else str(int(disp_val))
             
             # Simple title: "5.8 →" or "105 →"
             title_str = f" {val_str} {arrow} "
@@ -976,6 +1050,15 @@ class GlucoseApp(rumps.App):
                  # Color setting not supported by this rumps version without access to NSStatusItem
                  print("DEBUGGING: Could not find NSStatusItem to apply color")
                  self.title = title_str
+
+            # Update status/last updated items
+            try:
+                from datetime import datetime
+                self.last_updated_at = datetime.now()
+                if hasattr(self, "status_item"):
+                    self.status_item.setTitle_(f"Status: OK   Last updated: {self.last_updated_at.strftime('%H:%M')}")
+            except Exception:
+                pass
                  
         except Exception as e:
             pass
@@ -1001,6 +1084,13 @@ def setup_logging():
         os.makedirs(log_dir, exist_ok=True)
     
     log_file = os.path.join(log_dir, "schugaa.log")
+    try:
+        if not os.path.exists(log_file):
+            with open(log_file, "a"):
+                pass
+        os.chmod(log_file, 0o600)
+    except Exception:
+        pass
     
     # Simple redirector that writes to both terminal and file
     class DualWriter:
@@ -1059,8 +1149,15 @@ if __name__ == "__main__":
     config = load_config_data()
     
     needs_login = True
-    if config and "email" in config and "password" in config:
-        needs_login = False
+    if config and config.get("email"):
+        temp_email = config.get("email")
+        try:
+            import base64
+            temp_email = base64.b64decode(temp_email).decode('utf-8')
+        except Exception:
+            pass
+        if config.get("password") or get_keyring_password(temp_email):
+            needs_login = False
         
     # Define login logic with unified AppKit Window
     def perform_login():
@@ -1158,17 +1255,19 @@ if __name__ == "__main__":
                     
                     import base64
                     email_b64 = base64.b64encode(email.encode('utf-8')).decode('utf-8')
-                    password_b64 = base64.b64encode(password.encode('utf-8')).decode('utf-8')
-                    
+                    password_store = "__keyring__" if set_keyring_password(email, password) else None
+                    if not password_store:
+                        import base64
+                        password_store = base64.b64encode(password.encode('utf-8')).decode('utf-8')
+
                     config = {
                         "email": email_b64,
-                        "password": password_b64,
+                        "password": password_store,
                         "region": final_region,
                         "unit": unit
                     }
                     
-                    with open(get_config_path(), "w") as f:
-                        json.dump(config, f, indent=4)
+                    write_json_secure(get_config_path(), config)
                         
                     rumps.alert("Success", "Login successful!")
                     return True

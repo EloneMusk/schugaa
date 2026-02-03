@@ -16,7 +16,7 @@ Schugaa is a lightweight, native macOS menu bar application that displays real-t
 - **Smart Redirect Handling**: Automatically detects and handles regional account redirects.
 - **Native & Lightweight**: Built with Python and native macOS APIs (AppKit) for a seamless system integration.
 - **Universal Support**: Runs natively on both Apple Silicon (M1/M2/M3) and Intel Macs.
-- **Secure**: Your credentials are stored locally on your machine (`~/.schugaa/session.json`).
+- **Secure-ish**: Credentials are stored locally; passwords are kept in macOS Keychain when available, and local files are permission-restricted (`~/.schugaa/session.json`).
 
 ## Installation 📦
 
@@ -42,7 +42,7 @@ To create a standalone `.dmg` file that you can install like any other Mac app:
 
 ## Usage 🚀
 
-1.  **Login**: Upon first launch, you will be prompted to enter your **LibreLinkUp** credentials (Email & Password) and select your region.
+1.  **Login**: Upon first launch, you will be prompted to enter your **LibreLinkUp** credentials (Email & Password) and select your region. Passwords are stored in Keychain when available.
 2.  **View Data**: The app will appear in your menu bar.
 3.  **Graph**: Click the menu bar item to see the graph.
 4.  **Settings**:

@@ -34,6 +34,7 @@ class LibreClient:
         self.password = password
         self.region = region
         self.api_url = self.REGIONS.get(region, APIUrl.US)
+        self.last_error = None
         
         # Monkey-patch HEADERS to include robust User-Agent
         import pylibrelinkup.pylibrelinkup
@@ -46,6 +47,14 @@ class LibreClient:
         
         # Load session to hydrate client
         self._load_session()
+
+    def _coerce_api_url(self, value):
+        if isinstance(value, APIUrl):
+            return value
+        for _, url_enum in self.REGIONS.items():
+            if getattr(url_enum, "value", None) == value:
+                return url_enum
+        return value
 
     def _get_session_path(self):
         # Use ~/.schugaa/session.json for persistence
@@ -68,11 +77,16 @@ class LibreClient:
                 "account_id_hash": self.client.account_id_hash,
                 "region": self.region,
                 # Save the string value of the enum for restoration
-                "api_url": self.client.api_url, 
+                "api_url": self.client.api_url.value if hasattr(self.client.api_url, "value") else self.client.api_url,
                 "expiry": self.expiry # Managed manually
             }
-            with open(self._get_session_path(), 'w') as f:
+            path = self._get_session_path()
+            with open(path, 'w') as f:
                 json.dump(data, f)
+            try:
+                os.chmod(path, 0o600)
+            except Exception:
+                pass
         except Exception as e:
             print(f"Failed to save session: {e}")
 
@@ -94,7 +108,7 @@ class LibreClient:
                         self.client.account_id_hash = data["account_id_hash"]
                     
                     if data.get("api_url"):
-                        self.client.api_url = data["api_url"]
+                        self.client.api_url = self._coerce_api_url(data["api_url"])
                     if data.get("region"):
                         self.region = data["region"]
                         
@@ -145,6 +159,7 @@ class LibreClient:
 
     def get_latest_glucose(self, retry=True):
         try:
+            self.last_error = None
             # Ensure logged in
             if not self.client.token:
                 if not self.login():
@@ -182,7 +197,7 @@ class LibreClient:
             # 1. Latest
             latest = self.client.latest(patient_id)
             # 2. Graph
-            history = self.client.graph(patient_id)
+            history = self.client.graph(patient_id) or []
             
             if not latest:
                 return None
@@ -231,10 +246,15 @@ class LibreClient:
             
         except Exception as e:
             print(f"Glucose fetch error: {e}")
+            if "429" in str(e) or "Too Many Requests" in str(e):
+                self.last_error = {
+                    "type": "rate_limit",
+                    "message": "Rate limit hit. Backing off and retrying."
+                }
+                return None
             # Try once to re-login if error might be auth related
             if "401" in str(e) or "403" in str(e):
                  if self.login() and retry:
                      return self.get_latest_glucose(retry=False)
             return None
-
 
