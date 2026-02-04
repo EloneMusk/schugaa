@@ -4,6 +4,7 @@ import threading
 import os
 import sys
 import time
+import math
 from libre_api import LibreClient
 from AppKit import (NSImage, NSApplication, NSMenu, NSMenuItem, NSObject, NSView, NSBezierPath, 
                    NSTrackingArea, NSTextField, NSColor, NSFont, NSString,
@@ -1149,10 +1150,8 @@ class GlucoseApp(rumps.App):
                             days_remaining = (sensor_expires - now_ts) / (24 * 60 * 60)
                             
                             if days_remaining > 0:
-                                days_int = int(days_remaining)
-                                if days_int == 0:
-                                    sensor_text = "<1 day"
-                                elif days_int == 1:
+                                days_int = math.ceil(days_remaining)
+                                if days_int == 1:
                                     sensor_text = "1 day"
                                 else:
                                     sensor_text = f"{days_int} days"
@@ -1164,10 +1163,8 @@ class GlucoseApp(rumps.App):
                         days_remaining = (sensor_expires - now_ts) / (24 * 60 * 60)
                         
                         if days_remaining > 0:
-                            days_int = int(days_remaining)
-                            if days_int == 0:
-                                sensor_text = "<1 day"
-                            elif days_int == 1:
+                            days_int = math.ceil(days_remaining)
+                            if days_int == 1:
                                 sensor_text = "1 day"
                             else:
                                 sensor_text = f"{days_int} days"
