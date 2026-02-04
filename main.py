@@ -1117,7 +1117,6 @@ class GlucoseApp(rumps.App):
                 status_item.button().setAttributedTitle_(attr_str)
             else:
                  # Color setting not supported by this rumps version without access to NSStatusItem
-                 print("DEBUGGING: Could not find NSStatusItem to apply color")
                  self.title = title_str
 
             # Update status/last updated items

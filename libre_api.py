@@ -249,8 +249,20 @@ class LibreClient:
                 if sensor and sensor.a:
                     # sensor.a is activation timestamp in seconds
                     sensor_activated = sensor.a
-                    # LibreLink sensors last 14 days (14 * 24 * 60 * 60 seconds)
-                    sensor_expires = sensor.a + (14 * 24 * 60 * 60)
+                    
+                    # Determine duration
+                    # Standard Libre 3 (PT 4) is 14 days. SN is 9 chars.
+                    # Libre 3 Plus (PT 4?) is 15 days. SN is 10 chars (e.g. "0P...").
+                    duration_days = 14
+                    
+                    try:
+                        # Heuristic: Plus sensors have 10-char SN
+                        if sensor.sn and len(sensor.sn) >= 10:
+                            duration_days = 15
+                    except:
+                        pass
+
+                    sensor_expires = sensor.a + (duration_days * 24 * 60 * 60)
             except Exception as e:
                 print(f"Could not extract sensor data: {e}")
             
