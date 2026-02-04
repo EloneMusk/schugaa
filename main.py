@@ -1,3 +1,6 @@
+import warnings
+warnings.simplefilter("ignore")
+
 import rumps
 import json
 import threading
@@ -14,8 +17,10 @@ from AppKit import (NSImage, NSApplication, NSMenu, NSMenuItem, NSObject, NSView
                    NSParagraphStyleAttributeName, NSMutableParagraphStyle, NSWorkspace,
                    NSVisualEffectView, NSVisualEffectMaterialHUDWindow, NSVisualEffectBlendingModeBehindWindow,
                    NSVisualEffectStateActive, NSVisualEffectMaterialPopover, NSAppearance)
-from Foundation import NSMakeRect, NSURL
+from Foundation import NSMakeRect, NSURL, NSUserDefaults
 import objc
+# Suppress specific ObjC pointer warnings that are harmless here
+warnings.filterwarnings("ignore", category=objc.ObjCPointerWarning)
 
 MMOL_FACTOR = 18.0182
 
@@ -182,6 +187,17 @@ class GraphPlotView(NSView):
             
         return self
 
+    def is_dark_mode(self):
+        """Check if system is in dark mode using NSUserDefaults (reliable)"""
+        try:
+            # Check system global preference
+            style = NSUserDefaults.standardUserDefaults().stringForKey_("AppleInterfaceStyle")
+            is_dark = (style == "Dark")
+            return is_dark
+        except:
+            pass
+        return False
+
     def get_color(self, value):
         if value < 70:
             return NSColor.redColor()
@@ -224,8 +240,16 @@ class GraphPlotView(NSView):
         if not self.data_points:
              return
 
-        # 1. Solid White Background - Fill bounds to cover everything
-        NSColor.whiteColor().set()
+        # Detect dark mode
+        is_dark = self.is_dark_mode()
+        
+        # 1. Background - adaptive based on system appearance
+        if is_dark:
+            # Dark mode: near black background (user requested darker)
+            NSColor.colorWithCalibratedRed_green_blue_alpha_(0.05, 0.05, 0.05, 1.0).set()
+        else:
+            # Light mode: white background
+            NSColor.whiteColor().set()
         NSBezierPath.fillRect_(self.bounds())
         
         width = rect.size.width
@@ -276,8 +300,13 @@ class GraphPlotView(NSView):
         
         if y_high > y_low:
              band_rect = NSMakeRect(margin_left, y_low, plot_width, y_high - y_low)
-             # Very Light Green #e6f7eb approx
-             NSColor.colorWithCalibratedRed_green_blue_alpha_(0.90, 0.97, 0.92, 1.0).set()
+             # Adaptive Safe Zone Color
+             if is_dark:
+                 # Darker green for dark mode (visible on black)
+                 NSColor.colorWithCalibratedRed_green_blue_alpha_(0.1, 0.3, 0.1, 0.6).set()
+             else:
+                 # Very Light Green for light mode
+                 NSColor.colorWithCalibratedRed_green_blue_alpha_(0.90, 0.97, 0.92, 1.0).set()
              NSBezierPath.fillRect_(band_rect)
 
         # --- 3. Dashed Limit Lines (Low/High) ---
@@ -300,14 +329,17 @@ class GraphPlotView(NSView):
         NSColor.colorWithCalibratedRed_green_blue_alpha_(0.8, 0.3, 0.3, 0.8).set()
         limit_path.stroke()
 
-        # --- 4. Grid Lines (Faint Grey) ---
+        # --- 4. Grid Lines (Adaptive color) ---
         grid_path = NSBezierPath.bezierPath()
         grid_path.setLineWidth_(0.5)
         grid_path.setLineDash_count_phase_([2.0, 2.0], 2, 0.0)
         
         axis_font = NSFont.systemFontOfSize_(10)
-        # Using dark grey for text
-        text_color = NSColor.colorWithCalibratedWhite_alpha_(0.3, 1.0) 
+        # Adaptive text color
+        if is_dark:
+            text_color = NSColor.colorWithCalibratedWhite_alpha_(0.8, 1.0)  # Light grey in dark mode
+        else:
+            text_color = NSColor.colorWithCalibratedWhite_alpha_(0.3, 1.0)  # Dark grey in light mode
         
         axis_attrs = {
             NSFontAttributeName: axis_font, 
@@ -333,7 +365,11 @@ class GraphPlotView(NSView):
                 r = NSMakeRect(0, y - s.height/2 + 3, margin_left - 5, s.height)
                 NSString.stringWithString_(l_str).drawInRect_withAttributes_(r, y_label_attrs)
                 
-        NSColor.colorWithCalibratedWhite_alpha_(0.85, 1.0).set() # Faint grey grid
+        # Adaptive grid color
+        if is_dark:
+            NSColor.colorWithCalibratedWhite_alpha_(0.35, 1.0).set()  # Lighter grid in dark mode
+        else:
+            NSColor.colorWithCalibratedWhite_alpha_(0.85, 1.0).set()  # Faint grey grid in light mode
         grid_path.stroke()
 
         # --- 5. Axes Vertical Line (Divider) ---
@@ -354,14 +390,17 @@ class GraphPlotView(NSView):
             y = get_y(disp_val)
             points_coords.append((x, y, disp_val, ts, val))
 
-        # A. Connection Line (Neo-brutalism: solid black stroke)
+        # A. Connection Line (Neo-brutalism: solid stroke)
         line_path = NSBezierPath.bezierPath()
         for i, (x, y, _, _, _) in enumerate(points_coords):
             if i == 0: line_path.moveToPoint_((x, y))
             else: line_path.lineToPoint_((x, y))
             
-        # Neo-brutalism: Bold black line
-        NSColor.blackColor().set()
+        # Neo-brutalism: Bold line (adaptive color)
+        if is_dark:
+            NSColor.whiteColor().set()
+        else:
+            NSColor.blackColor().set()
         line_path.setLineWidth_(2.5)
         line_path.setLineCapStyle_(1) # Round
         line_path.setLineJoinStyle_(1) # Round
@@ -404,8 +443,11 @@ class GraphPlotView(NSView):
             dot_color.set()
             dot_path.fill()
             
-            # Bold black stroke (neo-brutalism)
-            NSColor.blackColor().set()
+            # Bold stroke (neo-brutalism, adaptive color)
+            if is_dark:
+                NSColor.whiteColor().set()
+            else:
+                NSColor.blackColor().set()
             dot_path.setLineWidth_(2.0)
             dot_path.stroke()
 
@@ -455,6 +497,9 @@ class GraphPlotView(NSView):
             
         loc = self.convertPoint_fromView_(event.locationInWindow(), None)
         x_mouse = loc.x
+        
+        # Detect dark mode for tooltip logic
+        is_dark = self.is_dark_mode()
         
         # Find closest point
         closest = None
@@ -518,24 +563,35 @@ class GraphPlotView(NSView):
             # "68"
             val_only_len = len(val_str)
             val_font = NSFont.boldSystemFontOfSize_(16.0)
-            dark_blue = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.25, 0.36, 1.0)
-            attr_str.addAttribute_value_range_(NSFontAttributeName, val_font, (0, val_only_len))
-            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, dark_blue, (0, val_only_len))
             
-            # Unit Attributes (Dark Blue, Regular, Medium)
+            # Adaptive value color
+            if is_dark:
+                 val_color = NSColor.whiteColor()
+            else:
+                 val_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.25, 0.36, 1.0) # Dark Blue
+            
+            attr_str.addAttribute_value_range_(NSFontAttributeName, val_font, (0, val_only_len))
+            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, val_color, (0, val_only_len))
+            
+            # Unit Attributes (Adaptive, Regular, Medium)
             # " mg/dl"
             unit_start = val_only_len
             unit_len = len(unit) + 1 # include space
             unit_font = NSFont.systemFontOfSize_(14.0)
             attr_str.addAttribute_value_range_(NSFontAttributeName, unit_font, (unit_start, unit_len))
-            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, dark_blue, (unit_start, unit_len))
+            attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, val_color, (unit_start, unit_len))
             
             # Date Attributes (Grey, Regular, Small)
             # "\nToday • 11:05"
             date_start = unit_start + unit_len
             date_len = len(full_str) - date_start
             date_font = NSFont.systemFontOfSize_(11.0)
-            grey_color = NSColor.grayColor()
+            
+            # Adaptive date color
+            if is_dark:
+                grey_color = NSColor.colorWithCalibratedWhite_alpha_(0.8, 1.0) # Light grey
+            else:
+                grey_color = NSColor.grayColor() # Standard gray
             attr_str.addAttribute_value_range_(NSFontAttributeName, date_font, (date_start, date_len))
             attr_str.addAttribute_value_range_(NSForegroundColorAttributeName, grey_color, (date_start, date_len))
                          
@@ -562,6 +618,25 @@ class GraphPlotView(NSView):
             self.tooltip_container.setFrameSize_((tooltip_width, 50))
             # Also resize the label to match
             self.tooltip_label.setFrame_(NSMakeRect(0, 5, tooltip_width, 40))
+            
+            
+            # Update Tooltip Colors for Dark Mode (Dynamic)
+            if is_dark:
+                # Dark Blue background
+                bg_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.1, 0.25, 0.95)
+                border_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.2, 0.3, 0.5, 1.0)
+                # Text White
+                self.tooltip_label.setTextColor_(NSColor.whiteColor())
+            else:
+                # Light Blue background
+                bg_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.85, 0.91, 0.98, 0.95)
+                border_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.75, 0.82, 0.92, 1.0)
+                # Text Dark
+                self.tooltip_label.setTextColor_(NSColor.blackColor()) # Or default
+                
+            self.tooltip_container.layer().setBackgroundColor_(bg_color.CGColor())
+            self.tooltip_container.layer().setBorderColor_(border_color.CGColor())
+            
             self.tooltip_container.setHidden_(False)
         else:
             self.tooltip_container.setHidden_(True)
@@ -679,10 +754,15 @@ class GlucoseApp(rumps.App):
         # Wait, rumps builds the menu on run? No, self._menu is initialized in App.__init__
         self._menu._menu.addItem_(self.graph_item)
         
-        # Try to make the menu background white to eliminate gray padding
+        # Apply appearance based on system preference
         try:
-            # Set menu appearance to aqua/light to avoid dark mode issues
-            self._menu._menu.setAppearance_(NSAppearance.appearanceNamed_("NSAppearanceNameAqua"))
+            is_dark = NSUserDefaults.standardUserDefaults().stringForKey_("AppleInterfaceStyle") == "Dark"
+            if not is_dark:
+                # Force light mode helper to avoid gray strip in light mode
+                self._menu._menu.setAppearance_(NSAppearance.appearanceNamed_("NSAppearanceNameAqua"))
+            else:
+                # In dark mode, ensure standard appearance (Dark Aqua)
+                self._menu._menu.setAppearance_(None)
         except:
             pass
         
@@ -1442,6 +1522,10 @@ if __name__ == "__main__":
                 return False
 
     # Main Execution
+    # Ensure NSApp is initialized and appearance is set to inherit from system
+    app = NSApplication.sharedApplication()
+    app.setAppearance_(None) # Inherit system appearance (allows Dark Mode)
+    
     if needs_login:
         if not perform_login():
             sys.exit(0)
