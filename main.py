@@ -149,36 +149,29 @@ class GraphPlotView(NSView):
                 self.bounds(), options, self, None)
             self.addTrackingArea_(tracking_area)
             
-            # Tooltip Container - Glass Effect (NSVisualEffectView)
-            # Use raw integers for Material: 2 = Popover (Light), 0 = HUD (Dark), 8 = ToolTip
-            # BlendingMode: 1 = WithinWindow
-            self.tooltip_container = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(0, 0, 130, 45))
-            self.tooltip_container.setMaterial_(1) # Light
-            self.tooltip_container.setBlendingMode_(1) # WithinWindow
-            self.tooltip_container.setState_(1) # Active
-            # Force Light Appearance (VibrantLight) to ensure glass look isn't gray/dark
-            self.tooltip_container.setAppearance_(NSAppearance.appearanceNamed_("NSAppearanceNameVibrantLight"))
+            # Tooltip Container - Neo-brutalism style (light blue with transparency)
+            # Create a custom container view with rounded corners
+            self.tooltip_container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 105, 50))
             self.tooltip_container.setWantsLayer_(True)
-            self.tooltip_container.layer().setCornerRadius_(12)
-            self.tooltip_container.layer().setMasksToBounds_(True)
+            
+            # Light blue background with transparency (like the reference image)
+            light_blue = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.85, 0.91, 0.98, 0.95)
+            self.tooltip_container.layer().setBackgroundColor_(light_blue.CGColor())
+            self.tooltip_container.layer().setCornerRadius_(8)
+            self.tooltip_container.layer().setBorderWidth_(1.0)
+            # Light border
+            border_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.75, 0.82, 0.92, 1.0)
+            self.tooltip_container.layer().setBorderColor_(border_color.CGColor())
             self.tooltip_container.setHidden_(True)
             
-            # Add shadow to container view (requires not masking bounds for shadow? 
-            # NSVisualEffectView clipping makes shadow tricky. 
-            # Ideally we wrap VE in a clear view with shadow, OR just rely on VE internal look. 
-            # Let's try adding shadow to the VE layer first, but setMasksToBounds might clip it.
-            # Let's SKIP shadow on the VE for this pass to ensure the BLUR works, 
-            # or wrap it. A simple pill blur is often good enough for "iOS style".
-            
-            # Tooltip Label (Text Content)
-            self.tooltip_label = NSTextField.alloc().initWithFrame_(self.tooltip_container.bounds())
+            # Tooltip Label (Text Content) - fills container for center alignment
+            self.tooltip_label = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 5, 105, 40))
             self.tooltip_label.setBezeled_(False)
             self.tooltip_label.setDrawsBackground_(False)
             self.tooltip_label.setBackgroundColor_(NSColor.clearColor())
             self.tooltip_label.setEditable_(False)
             self.tooltip_label.setSelectable_(False)
-            # Autoresize with container
-            self.tooltip_label.setAutoresizingMask_(18) # Width+Height resizable
+            self.tooltip_label.setAlignment_(1)  # Center alignment
             
             self.tooltip_container.addSubview_(self.tooltip_label)
             self.addSubview_(self.tooltip_container)
@@ -361,37 +354,60 @@ class GraphPlotView(NSView):
             y = get_y(disp_val)
             points_coords.append((x, y, disp_val, ts, val))
 
-        # A. Connection Line (Solid Dark Blue)
+        # A. Connection Line (Neo-brutalism: solid black stroke)
         line_path = NSBezierPath.bezierPath()
         for i, (x, y, _, _, _) in enumerate(points_coords):
             if i == 0: line_path.moveToPoint_((x, y))
             else: line_path.lineToPoint_((x, y))
             
-        # Dark Blue #003f5c
-        NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.25, 0.36, 1.0).set()
-        line_path.setLineWidth_(3.0)
+        # Neo-brutalism: Bold black line
+        NSColor.blackColor().set()
+        line_path.setLineWidth_(2.5)
         line_path.setLineCapStyle_(1) # Round
         line_path.setLineJoinStyle_(1) # Round
         line_path.stroke()
         
-        # B. End Dot? (Reference shows end dot? No, reference doesn't show clearer dots on line, maybe end one)
-        # User said "show only line". So NO dots.
-
-        # Draw Trend Dot at the last point
-        last_x, last_y, _, _, last_val = points_coords[-1]
+        # B. Hourly Dots (Neo-brutalism style: colored fill + bold black outline)
+        # Group points by hour and draw one dot per hour
+        hour_dots = []
+        last_hour_key = None
         
-        dot_path = NSBezierPath.bezierPath()
-        dot_radius = 4.0
-        dot_rect = NSMakeRect(last_x - dot_radius, last_y - dot_radius, dot_radius * 2, dot_radius * 2)
-        dot_path.appendBezierPathWithOvalInRect_(dot_rect)
+        try:
+            import datetime as dt_module
+            for x, y, disp_val, ts, raw_val in points_coords:
+                try:
+                    dt_obj = dt_module.datetime.strptime(ts, "%m/%d/%Y %I:%M:%S %p")
+                    hour_key = (dt_obj.year, dt_obj.month, dt_obj.day, dt_obj.hour)
+                    
+                    if hour_key != last_hour_key:
+                        hour_dots.append((x, y, raw_val))
+                        last_hour_key = hour_key
+                    else:
+                        # Update with latest point in this hour
+                        hour_dots[-1] = (x, y, raw_val)
+                except:
+                    pass
+        except:
+            # Fallback: just use every 5th point
+            for i, (x, y, _, _, raw_val) in enumerate(points_coords):
+                if i % 5 == 0 or i == len(points_coords) - 1:
+                    hour_dots.append((x, y, raw_val))
         
-        # Trend Color
-        # User requested "color as per blood sugar values".
-        # So we use get_color(value) for the dot.
-        dot_color = self.get_color(last_val)
-             
-        dot_color.set()
-        dot_path.fill()
+        # Draw dots with neo-brutalism style (colored fill + black stroke)
+        dot_radius = 5.0
+        for x, y, raw_val in hour_dots:
+            dot_rect = NSMakeRect(x - dot_radius, y - dot_radius, dot_radius * 2, dot_radius * 2)
+            dot_path = NSBezierPath.bezierPathWithOvalInRect_(dot_rect)
+            
+            # Fill with trend color
+            dot_color = self.get_color(raw_val)
+            dot_color.set()
+            dot_path.fill()
+            
+            # Bold black stroke (neo-brutalism)
+            NSColor.blackColor().set()
+            dot_path.setLineWidth_(2.0)
+            dot_path.stroke()
 
         # Save coords for hover
         clean_coords = []
@@ -526,7 +542,7 @@ class GraphPlotView(NSView):
             self.tooltip_label.setAttributedStringValue_(attr_str)
             
             # Position tooltip
-            tooltip_width = 105 # Reduced to 105 per user request to tighten padding
+            tooltip_width = 105  # Compact width (25% less padding)
             t_x = px + 10 
             
             # Check if it goes off screen
@@ -539,11 +555,13 @@ class GraphPlotView(NSView):
             
             t_y = py + 10
             # Increase height check for multi-line tooltip
-            if t_y > self.bounds().size.height - 40: t_y = py - 40
+            if t_y > self.bounds().size.height - 50: t_y = py - 50
             
             self.tooltip_container.setFrameOrigin_((t_x, t_y))
             # Resize tooltip frame to fit content
-            self.tooltip_container.setFrameSize_(NSMakeRect(0, 0, tooltip_width, 45).size)
+            self.tooltip_container.setFrameSize_((tooltip_width, 50))
+            # Also resize the label to match
+            self.tooltip_label.setFrame_(NSMakeRect(0, 5, tooltip_width, 40))
             self.tooltip_container.setHidden_(False)
         else:
             self.tooltip_container.setHidden_(True)
