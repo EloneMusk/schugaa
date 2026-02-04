@@ -6,6 +6,7 @@ from pylibrelinkup.pylibrelinkup import PyLibreLinkUp
 from pylibrelinkup.api_url import APIUrl
 from pylibrelinkup.exceptions import AuthenticationError, RedirectError
 from pydantic import ValidationError
+from datetime import datetime
 
 class LibreClient:
     REGIONS = {
@@ -47,6 +48,100 @@ class LibreClient:
         
         # Load session to hydrate client
         self._load_session()
+
+    def _normalize_timestamp(self, ts):
+        if ts is None:
+            return None
+        # Strings: try int first, then ISO-8601
+        if isinstance(ts, str):
+            ts_str = ts.strip()
+            if ts_str.isdigit():
+                try:
+                    ts = int(ts_str)
+                except Exception:
+                    return None
+            else:
+                try:
+                    # Handle Zulu timestamps
+                    if ts_str.endswith("Z"):
+                        ts_str = ts_str[:-1] + "+00:00"
+                    dt = datetime.fromisoformat(ts_str)
+                    return int(dt.timestamp())
+                except Exception:
+                    return None
+
+        # Numbers: normalize ms -> s if needed
+        try:
+            ts_val = float(ts)
+        except Exception:
+            return None
+
+        # Seconds ~ 1.7e9, milliseconds ~ 1.7e12
+        if ts_val > 1e11:
+            ts_val = ts_val / 1000.0
+
+        return int(ts_val)
+
+    def _extract_sensor_times(self, graph_response):
+        sensor_activated = None
+        sensor_expires = None
+
+        # Known-ish keys from various APIs or community payloads
+        expire_keys = (
+            "e",
+            "exp",
+            "expires",
+            "expiration",
+            "sensorExpires",
+            "sensorExpiration",
+            "end",
+            "endDate",
+            "endTime",
+        )
+
+        try:
+            data = (graph_response or {}).get("data") or {}
+            connection = data.get("connection") or {}
+            sensor = connection.get("sensor") or {}
+
+            sensor_activated = self._normalize_timestamp(sensor.get("a"))
+
+            for key in expire_keys:
+                if key in sensor:
+                    sensor_expires = self._normalize_timestamp(sensor.get(key))
+                    if sensor_expires:
+                        break
+
+            # Some payloads include an activeSensors list
+            if not sensor_activated or not sensor_expires:
+                active_sensors = data.get("activeSensors") or []
+                for item in active_sensors:
+                    s = (item or {}).get("sensor") or {}
+                    if not sensor_activated:
+                        sensor_activated = self._normalize_timestamp(s.get("a"))
+                    if not sensor_expires:
+                        for key in expire_keys:
+                            if key in s:
+                                sensor_expires = self._normalize_timestamp(s.get(key))
+                                if sensor_expires:
+                                    break
+                    if sensor_activated or sensor_expires:
+                        break
+        except Exception:
+            pass
+
+        return sensor_activated, sensor_expires
+
+    def _infer_sensor_duration_seconds(self, sensor):
+        # Default to 14 days; Libre 3 Plus is commonly 15 days (heuristic by SN length).
+        duration_days = 14
+        try:
+            if sensor and sensor.sn and len(sensor.sn) >= 10:
+                duration_days = 15
+        except Exception:
+            pass
+
+        return duration_days * 24 * 60 * 60
 
     def _coerce_api_url(self, value):
         if isinstance(value, APIUrl):
@@ -241,28 +336,19 @@ class LibreClient:
                         "FactoryTimestamp": latest.factory_timestamp.isoformat()
                     })
             
-            # Extract sensor activation time
+            # Extract sensor activation + expiration
             sensor_activated = None
             sensor_expires = None
             try:
-                sensor = graph_obj.data.connection.sensor
-                if sensor and sensor.a:
-                    # sensor.a is activation timestamp in seconds
-                    sensor_activated = sensor.a
-                    
-                    # Determine duration
-                    # Standard Libre 3 (PT 4) is 14 days. SN is 9 chars.
-                    # Libre 3 Plus (PT 4?) is 15 days. SN is 10 chars (e.g. "0P...").
-                    duration_days = 14
-                    
-                    try:
-                        # Heuristic: Plus sensors have 10-char SN
-                        if sensor.sn and len(sensor.sn) >= 10:
-                            duration_days = 15
-                    except:
-                        pass
-
-                    sensor_expires = sensor.a + (duration_days * 24 * 60 * 60)
+                sensor_activated, sensor_expires = self._extract_sensor_times(graph_response)
+                # Fallback: derive expiration from activation when API doesn't provide it
+                if not sensor_expires:
+                    sensor = graph_obj.data.connection.sensor
+                    if sensor and sensor.a:
+                        sensor_activated = self._normalize_timestamp(sensor.a) or sensor_activated
+                        duration_seconds = self._infer_sensor_duration_seconds(sensor)
+                        if sensor_activated and duration_seconds:
+                            sensor_expires = sensor_activated + duration_seconds
             except Exception as e:
                 print(f"Could not extract sensor data: {e}")
             
@@ -295,4 +381,3 @@ class LibreClient:
                  if self.login() and retry:
                      return self.get_latest_glucose(retry=False)
             return None
-
