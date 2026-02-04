@@ -1147,27 +1147,43 @@ class GlucoseApp(rumps.App):
                                 sensor_text = f"Warming up ({minutes_remaining} min)"
                         elif sensor_expires:
                             # Warmup complete, show expiration countdown
-                            days_remaining = (sensor_expires - now_ts) / (24 * 60 * 60)
+                            remaining_seconds = sensor_expires - now_ts
+                            days_remaining = remaining_seconds / (24 * 60 * 60)
                             
                             if days_remaining > 0:
-                                days_int = math.ceil(days_remaining)
-                                if days_int == 1:
-                                    sensor_text = "1 day"
+                                if days_remaining < 1:
+                                    hours_int = max(1, math.ceil(remaining_seconds / (60 * 60)))
+                                    if hours_int == 1:
+                                        sensor_text = "1 hour"
+                                    else:
+                                        sensor_text = f"{hours_int} hours"
                                 else:
-                                    sensor_text = f"{days_int} days"
+                                    days_int = math.ceil(days_remaining)
+                                    if days_int == 1:
+                                        sensor_text = "1 day"
+                                    else:
+                                        sensor_text = f"{days_int} days"
                             else:
                                 sensor_text = "Expired ⚠️"
                     elif sensor_expires:
                         # Fallback if activation time not available
                         now_ts = time.time()
-                        days_remaining = (sensor_expires - now_ts) / (24 * 60 * 60)
+                        remaining_seconds = sensor_expires - now_ts
+                        days_remaining = remaining_seconds / (24 * 60 * 60)
                         
                         if days_remaining > 0:
-                            days_int = math.ceil(days_remaining)
-                            if days_int == 1:
-                                sensor_text = "1 day"
+                            if days_remaining < 1:
+                                hours_int = max(1, math.ceil(remaining_seconds / (60 * 60)))
+                                if hours_int == 1:
+                                    sensor_text = "1 hour"
+                                else:
+                                    sensor_text = f"{hours_int} hours"
                             else:
-                                sensor_text = f"{days_int} days"
+                                days_int = math.ceil(days_remaining)
+                                if days_int == 1:
+                                    sensor_text = "1 day"
+                                else:
+                                    sensor_text = f"{days_int} days"
                         else:
                             sensor_text = "Expired ⚠️"
                      
