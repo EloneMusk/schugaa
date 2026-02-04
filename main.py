@@ -672,16 +672,48 @@ class GlucoseApp(rumps.App):
         cream_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.992, 0.816, 1.0)
         status_view.layer().setBackgroundColor_(cream_color.CGColor())
         
-        # Add text field to the view
-        self.status_label = NSTextField.alloc().initWithFrame_(NSMakeRect(5, 2, 440, 18))
+        # Add three separate text fields with dynamic spacing
+        label_y = 2
+        label_height = 18
+        font_size = 13.0
+        text_color = NSColor.colorWithCalibratedWhite_alpha_(0.2, 1.0)
+        font = NSFont.systemFontOfSize_(font_size)
+        
+        # 1. Status Label (Left) - Aligned Left (0)
+        self.status_label = NSTextField.alloc().initWithFrame_(NSMakeRect(10, label_y, 130, label_height))
         self.status_label.setBezeled_(False)
         self.status_label.setDrawsBackground_(False)
         self.status_label.setEditable_(False)
         self.status_label.setSelectable_(False)
-        self.status_label.setStringValue_("Status: OK   Last updated: --   Sensor: --")
-        self.status_label.setFont_(NSFont.systemFontOfSize_(13.0))
-        self.status_label.setTextColor_(NSColor.colorWithCalibratedWhite_alpha_(0.2, 1.0))
+        self.status_label.setAlignment_(0) # Left
+        self.status_label.setStringValue_("Status: OK")
+        self.status_label.setFont_(font)
+        self.status_label.setTextColor_(text_color)
         status_view.addSubview_(self.status_label)
+        
+        # 2. Last Updated Label (Center) - Aligned Center (1)
+        self.last_update_label = NSTextField.alloc().initWithFrame_(NSMakeRect(140, label_y, 170, label_height))
+        self.last_update_label.setBezeled_(False)
+        self.last_update_label.setDrawsBackground_(False)
+        self.last_update_label.setEditable_(False)
+        self.last_update_label.setSelectable_(False)
+        self.last_update_label.setAlignment_(1) # Center
+        self.last_update_label.setStringValue_("Last updated: --")
+        self.last_update_label.setFont_(font)
+        self.last_update_label.setTextColor_(text_color)
+        status_view.addSubview_(self.last_update_label)
+        
+        # 3. Sensor Label (Right) - Aligned Right (2)
+        self.sensor_label = NSTextField.alloc().initWithFrame_(NSMakeRect(310, label_y, 130, label_height))
+        self.sensor_label.setBezeled_(False)
+        self.sensor_label.setDrawsBackground_(False)
+        self.sensor_label.setEditable_(False)
+        self.sensor_label.setSelectable_(False)
+        self.sensor_label.setAlignment_(2) # Right
+        self.sensor_label.setStringValue_("Sensor: --")
+        self.sensor_label.setFont_(font)
+        self.sensor_label.setTextColor_(text_color)
+        status_view.addSubview_(self.sensor_label)
         
         self.status_menu_item.setView_(status_view)
         self._menu._menu.addItem_(self.status_menu_item)
@@ -983,11 +1015,14 @@ class GlucoseApp(rumps.App):
                 if data.get("Error") == "rate_limit":
                     self.title = "Rate limited"
                     if hasattr(self, "status_label"):
-                         update_str = f"Status: Rate limited (retrying)"
-                         if hasattr(self, "last_updated_at"):
-                             update_str += f"   Last updated: {self.last_updated_at.strftime('%H:%M')}"
-                         update_str += "   Sensor: --"
-                         self.status_label.setStringValue_(update_str)
+                        self.status_label.setStringValue_("Status: Rate limited")
+                        if hasattr(self, "last_update_label"):
+                            if hasattr(self, "last_updated_at"):
+                                self.last_update_label.setStringValue_(f"Last updated: {self.last_updated_at.strftime('%H:%M')}")
+                            else:
+                                self.last_update_label.setStringValue_("Last updated: --")
+                        if hasattr(self, "sensor_label"):
+                            self.sensor_label.setStringValue_("Sensor: --")
                     return
                 if self.title and "Created" not in self.title and "???" not in self.title:
                     return
@@ -1139,9 +1174,13 @@ class GlucoseApp(rumps.App):
                                 sensor_text = f"{days_int} days"
                         else:
                             sensor_text = "Expired ⚠️"
-                    
-                    status_text = f"Status: OK   Last updated: {self.last_updated_at.strftime('%H:%M')}   Sensor: {sensor_text}"
-                    self.status_label.setStringValue_(status_text)
+                     
+                    # Update each label separately with dynamic spacing
+                    self.status_label.setStringValue_("Status: OK")
+                    if hasattr(self, "last_update_label"):
+                        self.last_update_label.setStringValue_(f"Last updated: {self.last_updated_at.strftime('%H:%M')}")
+                    if hasattr(self, "sensor_label"):
+                        self.sensor_label.setStringValue_(f"Sensor: {sensor_text}")
             except Exception:
                 pass
                  
