@@ -412,8 +412,8 @@ class GraphPlotView(NSView):
                     # HH
                     t_lbl = dt.strftime("%H")
                     s = NSString.stringWithString_(t_lbl).sizeWithAttributes_(axis_attrs)
-                    # Shifted down slightly - using margin_bottom-25
-                    r = NSMakeRect(x - s.width/2, margin_bottom - 25, s.width, s.height)
+                    # Shifted down - reduced gap by 25%
+                    r = NSMakeRect(x - s.width/2, margin_bottom - 19, s.width, s.height)
                     NSString.stringWithString_(t_lbl).drawInRect_withAttributes_(r, axis_attrs)
                     
                     # Tick mark
