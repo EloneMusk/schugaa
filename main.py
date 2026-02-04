@@ -260,11 +260,10 @@ class GraphPlotView(NSView):
         y_range = max_y_val - min_y_val
         
         # Margins (Optimized)
-        margin_left = 45 # Increased padding on left
+        margin_left = 45 # Space for Y-axis labels
         margin_right = 20
-        # Reduced margins safely to remove unused space
         margin_top = 20 
-        margin_bottom = 25 # Reduced padding from bottom
+        margin_bottom = 25 # Space for X-axis labels
         
         plot_width = width - margin_left - margin_right
         plot_height = height - margin_bottom - margin_top
@@ -557,10 +556,11 @@ class CustomGraphView(NSView):
     def initWithFrame_(self, frame):
         self = objc.super(CustomGraphView, self).initWithFrame_(frame)
         if self:
-            # 1. Background (Solid White handled by PlotView or just let it be transparent and PlotView fills)
-            # We just need the plot view now.
+            # Set white background on the container view itself
+            self.setWantsLayer_(True)
+            self.layer().setBackgroundColor_(NSColor.whiteColor().CGColor())
             
-            # 2. Plot View (Content)
+            # Plot View (Content)
             self.plot_view = GraphPlotView.alloc().initWithFrame_(self.bounds())
             self.plot_view.setAutoresizingMask_(18)
             self.addSubview_(self.plot_view)
@@ -642,7 +642,7 @@ class GlucoseApp(rumps.App):
         # We need a dummy menu item to hold the view
         self.graph_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("", None, "")
         # Updated to 450x250 for better visibility
-        self.graph_view = CustomGraphView.alloc().initWithFrame_(NSMakeRect(0, 0, 450, 250))
+        self.graph_view = CustomGraphView.alloc().initWithFrame_(NSMakeRect(0, 0, 450, 256))
         self.graph_view.unit = self.config.get("unit", "mg/dL")
         self.graph_item.setView_(self.graph_view)
         
@@ -661,12 +661,19 @@ class GlucoseApp(rumps.App):
         # Wait, rumps builds the menu on run? No, self._menu is initialized in App.__init__
         self._menu._menu.addItem_(self.graph_item)
         
+        # Try to make the menu background white to eliminate gray padding
+        try:
+            # Set menu appearance to aqua/light to avoid dark mode issues
+            self._menu._menu.setAppearance_(NSAppearance.appearanceNamed_("NSAppearanceNameAqua"))
+        except:
+            pass
+        
         # Create custom status item with cream background
         self.status_menu_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("", None, "")
         self.status_menu_item.setEnabled_(False)
         
         # Create a view for the status item with cream background
-        # Match graph width (450px) and increase height to eliminate bottom padding
+        # Match graph width (450px)
         status_view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 450, 22))
         status_view.setWantsLayer_(True)
         # Cream color (RGB: 255, 253, 208)

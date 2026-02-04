@@ -82,16 +82,30 @@ echo "🔎 Verifying signature"
 codesign --verify --deep --strict "$APP_PATH"
 
 # ----------------------------
-# Create DMG
+# Create DMG with Applications shortcut
 # ----------------------------
 echo "💿 Creating DMG: $DMG_NAME"
 
+# Create a temporary folder for the DMG contents
+DMG_TEMP="$BUILD_DIR/dmg-temp"
+rm -rf "$DMG_TEMP"
+mkdir -p "$DMG_TEMP"
+
+# Copy app to temp folder
+cp -R "$APP_PATH" "$DMG_TEMP/"
+
+# Create symlink to Applications folder for drag-and-drop install
+ln -s /Applications "$DMG_TEMP/Applications"
+
 hdiutil create \
   -volname "$VOL_NAME" \
-  -srcfolder "$APP_PATH" \
+  -srcfolder "$DMG_TEMP" \
   -ov \
   -format UDZO \
   "$ROOT_DIR/$DMG_NAME"
+
+# Clean up temp folder
+rm -rf "$DMG_TEMP"
 
 # ----------------------------
 # Final verification
