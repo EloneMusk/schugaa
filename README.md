@@ -2,7 +2,7 @@
 
 ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/EloneMusk/schugaa/total?style=flat&logo=github&label=Downloads)
 
-Schugaa is a lightweight, native macOS menu bar application that displays real-time glucose levels from your Freestyle Libre sensor. It sits quietly in your menu bar, providing quick access to your current glucose reading, trend arrows, and a historical data graph.
+Schugaa is a lightweight, native macOS menu bar application that displays real-time glucose levels from your Freestyle Libre or Dexcom sensor. It sits quietly in your menu bar, providing quick access to your current glucose reading, trend arrows, and a historical data graph.
 
 <p align="center">
   <img src="https://github.com/EloneMusk/schugaa/blob/main/dark.png" alt="Dark Preview" width="400">
@@ -21,6 +21,7 @@ Schugaa is a lightweight, native macOS menu bar application that displays real-t
 - **Unit Conversion**: Supports both **mg/dL** and **mmol/L**. Switch instantly via the menu.
 - **Auto-Refresh**: Data automatically refreshes in the background (every 5 minutes) and immediately when you open the menu.
 - **Region Support**: Compatible with LibreView accounts worldwide (EU, Global, DE, FR, JP, AP, AE, UK, etc.).
+- **Dexcom Support**: Log in with Dexcom (US or OUS) and view readings with the same UI.
 - **Smart Redirect Handling**: Automatically detects and handles regional account redirects.
 - **Native & Lightweight**: Built with Python and native macOS APIs (AppKit) for a seamless system integration.
 - **Universal Support**: Runs natively on both Apple Silicon (M1/M2/M3) and Intel Macs.
@@ -58,7 +59,7 @@ To create a standalone `.dmg` file that you can install like any other Mac app:
 
 ## Usage 🚀
 
-1.  **Login**: Upon first launch, you will be prompted to enter your **LibreLinkUp** credentials (Email & Password) and select your region. Passwords are stored in Keychain when available.
+1.  **Login**: Upon first launch, choose **LibreLinkUp** or **Dexcom**, then enter your credentials and region. Passwords are stored in Keychain when available.
 2.  **View Data**: The app will appear in your menu bar.
 3.  **Graph**: Click the menu bar item to see the graph.
 4.  **Settings**:

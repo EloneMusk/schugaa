@@ -2,3 +2,4 @@ rumps
 requests
 pylibrelinkup
 keyring
+pydexcom

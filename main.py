@@ -9,6 +9,7 @@ import sys
 import time
 import math
 from libre_api import LibreClient
+from dexcom_api import DexcomClient
 from AppKit import (NSImage, NSApplication, NSMenu, NSMenuItem, NSObject, NSView, NSBezierPath, 
                    NSTrackingArea, NSTextField, NSColor, NSFont, NSString,
                    NSTrackingMouseEnteredAndExited, NSTrackingMouseMoved, 
@@ -718,11 +719,7 @@ class GlucoseApp(rumps.App):
         # icon=None ensures no icon in the menu bar, only text
         super(GlucoseApp, self).__init__("Schugaa", icon=None, quit_button=None)
         self.config = self.load_config()
-        self.client = LibreClient(
-            self.config.get("email"), 
-            self.config.get("password"), 
-            self.config.get("region", "eu")
-        )
+        self.client = self.build_client()
         # Clear default menu items
         self.menu = []
         self.quit_button = None
@@ -838,6 +835,22 @@ class GlucoseApp(rumps.App):
         # self.timer = rumps.Timer(self.update_glucose, 300) # Update every 5 minutes
         # self.timer.start()
 
+
+
+    def build_client(self):
+        provider = (self.config.get("provider") or "libre").lower()
+        email = self.config.get("email")
+        password = self.config.get("password")
+
+        if provider == "dexcom":
+            dexcom_region = self.config.get("dexcom_region") or "us"
+            return DexcomClient(email, password, dexcom_region)
+
+        return LibreClient(
+            email,
+            password,
+            self.config.get("region", "eu")
+        )
 
 
     def setup_application_menu(self):
@@ -957,6 +970,11 @@ class GlucoseApp(rumps.App):
                 if kr_pw:
                     config["password"] = kr_pw
 
+            if not config.get("provider"):
+                config["provider"] = "libre"
+            if config.get("provider") == "dexcom" and not config.get("dexcom_region"):
+                config["dexcom_region"] = "us"
+
             return config
         except Exception as e:
             rumps.alert("Error", f"Could not process config: {e}")
@@ -1006,11 +1024,7 @@ class GlucoseApp(rumps.App):
                 time.sleep(0.5)
             else:
                 if not self.client:
-                   self.client = LibreClient(
-                       self.config.get("email"),
-                       self.config.get("password"),
-                       self.config.get("region", "eu")
-                   )
+                   self.client = self.build_client()
                 
                 print("Fetching glucose data...")
                 # Pass retry=True to handle re-login automatically
@@ -1417,7 +1431,7 @@ if __name__ == "__main__":
         # Create the Alert Container
         alert = NSAlert.alloc().init()
         alert.setMessageText_("Schugaa Login")
-        alert.setInformativeText_("Enter your LibreLinkUp credentials.")
+        alert.setInformativeText_("Enter your credentials.")
         alert.addButtonWithTitle_("Login")
         alert.addButtonWithTitle_("Cancel")
         
@@ -1428,33 +1442,63 @@ if __name__ == "__main__":
                  alert.setIcon_(image)
 
         # Create a container view
-        wrapper_frame = NSMakeRect(0, 0, 300, 120)
+        wrapper_frame = NSMakeRect(0, 0, 300, 150)
         wrapper_view = NSView.alloc().initWithFrame_(wrapper_frame)
 
-        # Labels (Optional, but good for UX? simplified to Placeholders as requested)
-        
-        # Region Dropdown (Top)
+        # Provider Dropdown (Top Left)
+        provider_popup = NSPopUpButton.alloc().initWithFrame_(NSMakeRect(10, 110, 135, 24))
+        providers = ['LibreLinkUp', 'Dexcom']
+        provider_popup.addItemsWithTitles_(providers)
+        provider_popup.selectItemWithTitle_("LibreLinkUp")
+
+        # Region Dropdown (LibreLinkUp)
         region_popup = NSPopUpButton.alloc().initWithFrame_(NSMakeRect(10, 80, 135, 24))
         regions = ['eu', 'us', 'au', 'ca', 'global', 'de', 'fr', 'jp', 'ap', 'ae', 'la', 'eu2', 'gb', 'ru', 'tw', 'kr']
         region_popup.addItemsWithTitles_(regions)
         region_popup.selectItemWithTitle_("eu")
-        
+
+        # Region Dropdown (Dexcom)
+        dexcom_region_popup = NSPopUpButton.alloc().initWithFrame_(NSMakeRect(10, 80, 135, 24))
+        dexcom_regions = ['us', 'ous']
+        dexcom_region_popup.addItemsWithTitles_(dexcom_regions)
+        dexcom_region_popup.selectItemWithTitle_("us")
+        dexcom_region_popup.setHidden_(True)
+
         # Unit Dropdown (Top Right)
-        unit_popup = NSPopUpButton.alloc().initWithFrame_(NSMakeRect(155, 80, 135, 24))
+        unit_popup = NSPopUpButton.alloc().initWithFrame_(NSMakeRect(155, 110, 135, 24))
         units = ['mg/dL', 'mmol/L']
         unit_popup.addItemsWithTitles_(units)
         unit_popup.selectItemWithTitle_("mg/dL")
-        
+
+        class ProviderToggleHandler(NSObject):
+            def initWithRegion_dexcom_(self, libre_region, dexcom_region):
+                self = objc.super(ProviderToggleHandler, self).init()
+                self.libre_region = libre_region
+                self.dexcom_region = dexcom_region
+                return self
+
+            def providerChanged_(self, sender):
+                title = sender.selectedItem().title().lower()
+                is_dexcom = "dexcom" in title
+                self.libre_region.setHidden_(is_dexcom)
+                self.dexcom_region.setHidden_(not is_dexcom)
+
+        toggle_handler = ProviderToggleHandler.alloc().initWithRegion_dexcom_(region_popup, dexcom_region_popup)
+        provider_popup.setTarget_(toggle_handler)
+        provider_popup.setAction_("providerChanged:")
+
         # Email Field (Middle)
         email_field = NSTextField.alloc().initWithFrame_(NSMakeRect(10, 50, 280, 24))
-        email_field.setPlaceholderString_("LibreLinkUp Email")
-        
+        email_field.setPlaceholderString_("Email")
+
         # Password Field (Bottom)
         pass_field = NSSecureTextField.alloc().initWithFrame_(NSMakeRect(10, 20, 280, 24))
-        pass_field.setPlaceholderString_("LibreLinkUp Password")
-        
-        wrapper_view.addSubview_(region_popup)
+        pass_field.setPlaceholderString_("Password")
+
+        wrapper_view.addSubview_(provider_popup)
         wrapper_view.addSubview_(unit_popup)
+        wrapper_view.addSubview_(region_popup)
+        wrapper_view.addSubview_(dexcom_region_popup)
         wrapper_view.addSubview_(email_field)
         wrapper_view.addSubview_(pass_field)
         
@@ -1474,7 +1518,9 @@ if __name__ == "__main__":
             if response == 1000: # First Button (Login)
                 email = email_field.stringValue().strip()
                 password = pass_field.stringValue().strip()
+                provider = provider_popup.selectedItem().title().lower()
                 region = region_popup.selectedItem().title()
+                dexcom_region = dexcom_region_popup.selectedItem().title()
                 unit = unit_popup.selectedItem().title()
                 
                 if not email or not password:
@@ -1483,16 +1529,24 @@ if __name__ == "__main__":
                 # Test credentials
                 try:
                     # Explicitly login to check success and get region
-                    client = LibreClient(email, password, region)
-                    if not client.login():
-                        rumps.alert("Login Failed", "Could not authenticate with LibreLinkUp. Check credentials or try another region.")
-                        continue
+                    if "dexcom" in provider:
+                        client = DexcomClient(email, password, dexcom_region)
+                        if not client.login():
+                            rumps.alert("Login Failed", "Could not authenticate with Dexcom. Check credentials or region.")
+                            continue
+                        client.get_latest_glucose()
+                        final_region = None
+                    else:
+                        client = LibreClient(email, password, region)
+                        if not client.login():
+                            rumps.alert("Login Failed", "Could not authenticate with LibreLinkUp. Check credentials or try another region.")
+                            continue
                         
-                    # Fetch data to be sure
-                    client.get_latest_glucose()
-                    
-                    # Save Config - Use client.region in case of redirect
-                    final_region = client.region
+                        # Fetch data to be sure
+                        client.get_latest_glucose()
+                        
+                        # Save Config - Use client.region in case of redirect
+                        final_region = client.region
                     
                     import base64
                     email_b64 = base64.b64encode(email.encode('utf-8')).decode('utf-8')
@@ -1502,9 +1556,11 @@ if __name__ == "__main__":
                         password_store = base64.b64encode(password.encode('utf-8')).decode('utf-8')
 
                     config = {
+                        "provider": "dexcom" if "dexcom" in provider else "libre",
                         "email": email_b64,
                         "password": password_store,
                         "region": final_region,
+                        "dexcom_region": dexcom_region if "dexcom" in provider else None,
                         "unit": unit
                     }
                     
