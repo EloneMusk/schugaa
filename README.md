@@ -38,6 +38,14 @@ Schugaa is a lightweight, native macOS menu bar application that displays real-t
     ```
     This will automatically set up a virtual environment, install dependencies, and launch the app.
 
+### Running from Source using `uv`
+1. Ensure you have [uv](https://docs.astral.sh/uv/getting-started/installation/) installed
+2. Run `uv sync` to install dependencies
+3. Run the main script:
+```bash
+uv run main.py
+```
+
 ### Building the App (DMG)
 
 To create a standalone `.dmg` file that you can install like any other Mac app:
