@@ -497,7 +497,7 @@ class GraphPlotView(NSView):
              
             ("In Range", self.stats.get("in_range", 0),
              NSColor.greenColor().colorWithAlphaComponent_(0.15),
-             NSColor.greenColor()),
+             NSColor.greenColor() if is_dark else NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.45, 0.0, 1.0)),
              
             ("Low", self.stats.get("low", 0),
              NSColor.redColor().colorWithAlphaComponent_(0.15),
