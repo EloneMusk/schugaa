@@ -125,11 +125,23 @@ class MenuActionHandler(NSObject):
         NSWorkspace.sharedWorkspace().openURL_(NSURL.URLWithString_("https://ko-fi.com/abhishek0978"))
 
     def shareDebugLogs_(self, sender):
-        log_path = os.path.expanduser("~/Library/Logs/Schugaa/schugaa.log")
         if os.path.exists(log_path):
              NSWorkspace.sharedWorkspace().selectFile_inFileViewerRootedAtPath_(log_path, None)
         else:
              print("Log file not found.")
+
+class ThemeChangeObserver(NSObject):
+    def initWithApp_(self, app):
+        self = objc.super(ThemeChangeObserver, self).init()
+        self.app = app
+        return self
+    
+    def themeChanged_(self, notification):
+        # We need to run this on the main thread to be safe with UI updates
+        # although Rumos/PyObjC usually handles this, explicit dispatch is safer if coming from a distributed notification
+        self.app.update_status_bar_appearance()
+        if hasattr(self.app, 'graph_view'):
+            self.app.graph_view.setNeedsDisplay_(True)
 
 class GraphPlotView(NSView):
     def initWithFrame_(self, frame):
@@ -213,8 +225,20 @@ class GraphPlotView(NSView):
         }
 
     def is_dark_mode(self):
-        """Check if system is in dark mode using NSUserDefaults (reliable)"""
+        """Check if system is in dark mode using effectiveAppearance"""
         try:
+            # Try to get appearance from self (view)
+            appearance = self.effectiveAppearance()
+            if appearance:
+                 if "Dark" in appearance.name():
+                     return True
+            
+            # Fallback to NSApp
+            if hasattr(NSApplication, 'sharedApplication'):
+                app = NSApplication.sharedApplication()
+                if app:
+                     return "Dark" in app.effectiveAppearance().name()
+                     
             style = NSUserDefaults.standardUserDefaults().stringForKey_("AppleInterfaceStyle")
             is_dark = (style == "Dark")
             return is_dark
@@ -827,6 +851,19 @@ class GlucoseApp(rumps.App):
         
         self.menu_delegate = MenuDelegate.alloc().initWithApp_(self)
         self._menu._menu.setDelegate_(self.menu_delegate)
+        
+        # Setup Theme Observer
+        self.theme_observer = ThemeChangeObserver.alloc().initWithApp_(self)
+        try:
+             from Foundation import NSDistributedNotificationCenter
+             NSDistributedNotificationCenter.defaultCenter().addObserver_selector_name_object_(
+                 self.theme_observer,
+                 "themeChanged:",
+                 "AppleInterfaceThemeChangedNotification",
+                 None
+             )
+        except Exception as e:
+             print(f"Failed to register theme observer: {e}")
 
         self.data_queue = queue.Queue()
         self.update_status_bar_appearance()
@@ -1247,8 +1284,23 @@ class GlucoseApp(rumps.App):
             self.title = "Err"
 
     def is_dark_mode(self):
-        """Check if system is in dark mode using NSUserDefaults"""
+        """Check if system is in dark mode using effectiveAppearance"""
         try:
+            # First try to get appearance from the menu's view if possible, essentially "app appearance"
+            if hasattr(self, 'status_menu_item'):
+                view = self.status_menu_item.view()
+                if view:
+                     appearance = view.effectiveAppearance()
+                     if appearance:
+                         return "Dark" in appearance.name()
+            
+            # Fallback to NSApp
+            if hasattr(NSApplication, 'sharedApplication'):
+                app = NSApplication.sharedApplication()
+                if app:
+                     return "Dark" in app.effectiveAppearance().name()
+                     
+            # Fallback to defaults
             style = NSUserDefaults.standardUserDefaults().stringForKey_("AppleInterfaceStyle")
             return style == "Dark"
         except:
@@ -1259,13 +1311,13 @@ class GlucoseApp(rumps.App):
         if not hasattr(self, 'status_menu_item'):
             return
             
-        is_dark = self.is_dark_mode()
-        
         # Access the view from the menu item
         status_view = self.status_menu_item.view()
         if not status_view:
             return
 
+        is_dark = self.is_dark_mode()
+        
         # Update background color
         if is_dark:
             # Dark mode: Dark gray background
