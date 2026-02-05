@@ -829,6 +829,7 @@ class GlucoseApp(rumps.App):
         self._menu._menu.setDelegate_(self.menu_delegate)
 
         self.data_queue = queue.Queue()
+        self.update_status_bar_appearance()
         self.update_glucose(None)
         
 
@@ -1099,6 +1100,8 @@ class GlucoseApp(rumps.App):
             trend = data.get("TrendArrow")
             if hasattr(self, 'graph_view'):
                 self.graph_view.set_trend(trend)
+                
+            self.update_status_bar_appearance()
 
             arrow = self.TREND_ARROWS.get(trend, "")
             
@@ -1242,7 +1245,49 @@ class GlucoseApp(rumps.App):
         except Exception as e:
             pass
             self.title = "Err"
+
+    def is_dark_mode(self):
+        """Check if system is in dark mode using NSUserDefaults"""
+        try:
+            style = NSUserDefaults.standardUserDefaults().stringForKey_("AppleInterfaceStyle")
+            return style == "Dark"
+        except:
+            return False
+
+    def update_status_bar_appearance(self):
+        """Update status bar colors based on current system theme"""
+        if not hasattr(self, 'status_menu_item'):
+            return
             
+        is_dark = self.is_dark_mode()
+        
+        # Access the view from the menu item
+        status_view = self.status_menu_item.view()
+        if not status_view:
+            return
+
+        # Update background color
+        if is_dark:
+            # Dark mode: Dark gray background
+            bg_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.1, 0.1, 0.1, 1.0)
+        else:
+            # Light mode: Cream background
+            bg_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.992, 0.816, 1.0)
+            
+        status_view.layer().setBackgroundColor_(bg_color.CGColor())
+        
+        # Update text colors
+        if is_dark:
+            text_color = NSColor.whiteColor()
+        else:
+            text_color = NSColor.colorWithCalibratedWhite_alpha_(0.2, 1.0)
+            
+        if hasattr(self, 'status_label'):
+            self.status_label.setTextColor_(text_color)
+        if hasattr(self, 'last_update_label'):
+            self.last_update_label.setTextColor_(text_color)
+        if hasattr(self, 'sensor_label'):
+            self.sensor_label.setTextColor_(text_color)
 
 def get_config_path():
     
