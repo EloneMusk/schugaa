@@ -213,10 +213,11 @@ class GraphPlotView(NSView):
             
             if val < 70:
                 low_count += 1
-            elif val > 180:
+            elif val > 200:
                 high_count += 1
             else:
                 in_range_count += 1
+
                 
         self.stats = {
             "low": int((low_count / total) * 100),
