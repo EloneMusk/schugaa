@@ -1142,35 +1142,10 @@ class GlucoseApp(rumps.App):
                 self.last_sensor_activated = sensor_activated
                 
             graph_data = data.get("GraphData", [])
-            
-            # Filter out data points from before current sensor activation
-            if sensor_activated and graph_data:
-                from datetime import datetime
-                filtered_data = []
-                for point in graph_data:
-                    ts_str = point.get("Timestamp")
-                    if ts_str:
-                        try:
-                            dt = datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
-                            if dt.timestamp() >= sensor_activated:
-                                filtered_data.append(point)
-                        except Exception:
-                            pass
-                graph_data = filtered_data
-                
-            # If no valid data for current sensor, show waiting status
-            if not graph_data and sensor_activated:
-                if hasattr(self, "status_label"):
-                    self.status_label.setStringValue_("Status: Waiting for data")
-                    from AppKit import NSColor
-                    self.status_label.setTextColor_(NSColor.orangeColor())
-                if hasattr(self, 'graph_view'):
-                    self.graph_view.update_data([])
-                self.title = "..."
-                return
 
             if hasattr(self, 'graph_view'):
                 self.graph_view.update_data(graph_data)
+
                 
             trend = data.get("TrendArrow")
             if hasattr(self, 'graph_view'):
@@ -1275,8 +1250,9 @@ class GlucoseApp(rumps.App):
                     sensor_text = "--"
                     sensor_activated = data.get("SensorActivated")
                     sensor_expires = data.get("SensorExpires")
-                    
+
                     if sensor_activated:
+
                         now_ts = time.time()
                         warmup_duration = 60 * 60  
                         warmup_end = sensor_activated + warmup_duration

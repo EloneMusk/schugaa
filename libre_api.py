@@ -43,8 +43,61 @@ class LibreClient:
         
         self.expiry = 0
         self.session_file = "session.json"
+        self.sensor_history_file = "sensors.json"
         
         self._load_session()
+        self.sensor_history = self._load_sensor_history()
+
+    def _get_sensor_history_path(self):
+        home = os.path.expanduser("~")
+        app_dir = os.path.join(home, ".schugaa")
+        if not os.path.exists(app_dir):
+            os.makedirs(app_dir, exist_ok=True)
+        return os.path.join(app_dir, self.sensor_history_file)
+
+    def _load_sensor_history(self):
+        try:
+            path = self._get_sensor_history_path()
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Failed to load sensor history: {e}")
+        return {}
+
+    def _save_sensor_history(self):
+        try:
+            path = self._get_sensor_history_path()
+            with open(path, 'w') as f:
+                json.dump(self.sensor_history, f, indent=2)
+            try:
+                os.chmod(path, 0o600)
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"Failed to save sensor history: {e}")
+
+    def _get_or_register_sensor(self, serial_number, api_activation_time):
+        """Get stored activation time for sensor, or register new sensor with current time."""
+        if not serial_number:
+            return api_activation_time
+            
+        if serial_number in self.sensor_history:
+            stored = self.sensor_history[serial_number]
+            print(f"Found stored sensor {serial_number}, first seen: {stored.get('first_seen')}")
+            return stored.get('first_seen_ts', api_activation_time)
+        else:
+            # New sensor - save with current API activation time
+            now = int(time.time())
+            self.sensor_history[serial_number] = {
+                'first_seen': datetime.fromtimestamp(now).isoformat(),
+                'first_seen_ts': now,
+                'api_activation': api_activation_time
+            }
+            self._save_sensor_history()
+            print(f"Registered new sensor {serial_number} at {datetime.fromtimestamp(now)}")
+            return now
+
 
     def _normalize_timestamp(self, ts):
         if ts is None:
@@ -78,6 +131,7 @@ class LibreClient:
     def _extract_sensor_times(self, graph_response):
         sensor_activated = None
         sensor_expires = None
+        sensor_serial = None
 
         expire_keys = (
             "e",
@@ -97,6 +151,7 @@ class LibreClient:
             sensor = connection.get("sensor") or {}
 
             sensor_activated = self._normalize_timestamp(sensor.get("a"))
+            sensor_serial = sensor.get("sn")
 
             for key in expire_keys:
                 if key in sensor:
@@ -104,24 +159,38 @@ class LibreClient:
                     if sensor_expires:
                         break
 
-            if not sensor_activated or not sensor_expires:
+            if not sensor_activated or not sensor_expires or not sensor_serial:
                 active_sensors = data.get("activeSensors") or []
                 for item in active_sensors:
                     s = (item or {}).get("sensor") or {}
                     if not sensor_activated:
                         sensor_activated = self._normalize_timestamp(s.get("a"))
+                    if not sensor_serial:
+                        sensor_serial = s.get("sn")
                     if not sensor_expires:
                         for key in expire_keys:
                             if key in s:
                                 sensor_expires = self._normalize_timestamp(s.get(key))
                                 if sensor_expires:
                                     break
-                    if sensor_activated or sensor_expires:
+                    if sensor_activated and sensor_serial:
                         break
         except Exception:
             pass
 
+        # Use stored activation time if we have the serial number
+        if sensor_serial:
+            stored_activation = self._get_or_register_sensor(sensor_serial, sensor_activated)
+            if stored_activation:
+                sensor_activated = stored_activation
+
+        # If no explicit expiry found, calculate from activation (14 days for Libre 2/3)
+        if sensor_activated and not sensor_expires:
+            sensor_expires = sensor_activated + (14 * 24 * 60 * 60)
+
         return sensor_activated, sensor_expires
+
+
 
     def _infer_sensor_duration_seconds(self, sensor):
         duration_days = 14
