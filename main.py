@@ -1328,12 +1328,7 @@ class GlucoseApp(rumps.App):
                                     sensor_text = f"{days_int} days"
                         else:
                             sensor_text = "Expired ⚠️"
-                     
-                    if not is_stale and not is_signal_loss:
-                        self.status_label.setStringValue_("Status: OK")
 
-
-                        
                     if hasattr(self, "last_update_label"):
                         self.last_update_label.setStringValue_(f"Last updated: {self.last_updated_at.strftime('%H:%M')}")
                     if hasattr(self, "sensor_label"):
@@ -1342,6 +1337,7 @@ class GlucoseApp(rumps.App):
 
             except Exception:
                 pass
+
                  
         except Exception as e:
             pass
