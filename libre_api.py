@@ -250,22 +250,66 @@ class LibreClient:
                         return self.get_latest_glucose(retry=False)
                 return None
             
+            
             if not patients:
                 print("No patients found.")
                 return None
             
             patient_id = patients[0].patient_id
             
-            
+            # Get graph data
             graph_response = self.client._get_graph_data_json(patient_id)
+            
+            # Extract connection status from raw response
+            connection_status = None
+            try:
+                data_section = graph_response.get("data", {})
+                connection_section = data_section.get("connection", {})
+                connection_status = connection_section.get("status")
+            except Exception:
+                pass
+
             from pylibrelinkup.models.connection import GraphResponse
-            graph_obj = GraphResponse.model_validate(graph_response)
+            try:
+                graph_obj = GraphResponse.model_validate(graph_response)
+            except ValidationError:
+                # API returned None for glucoseMeasurement/glucoseItem (signal loss)
+                # Return partial result with connection status
+                sensor_activated, sensor_expires = self._extract_sensor_times(graph_response)
+                result = {
+                    "Value": None,
+                    "TrendArrow": None,
+                    "Timestamp": None,
+                    "GraphData": [],
+                    "ConnectionStatus": connection_status
+                }
+                if sensor_activated:
+                    result["SensorActivated"] = sensor_activated
+                if sensor_expires:
+                    result["SensorExpires"] = sensor_expires
+                return result
+
             
             latest = graph_obj.current
             history = graph_obj.history or []
             
             if not latest:
-                return None
+                # Return partial result with connection status even if no latest reading
+                sensor_activated, sensor_expires = self._extract_sensor_times(graph_response)
+                result = {
+                    "Value": None,
+                    "TrendArrow": None,
+                    "Timestamp": None,
+                    "GraphData": [],
+                    "ConnectionStatus": connection_status
+                }
+                if sensor_activated:
+                    result["SensorActivated"] = sensor_activated
+                if sensor_expires:
+                    result["SensorExpires"] = sensor_expires
+                return result
+
+
 
             
             def fmt_ts(dt):
@@ -313,8 +357,10 @@ class LibreClient:
                 "Value": latest.value,
                 "TrendArrow": latest.trend.value, 
                 "Timestamp": fmt_ts(latest.timestamp),
-                "GraphData": gdata
+                "GraphData": gdata,
+                "ConnectionStatus": connection_status
             }
+
             
             if sensor_activated:
                 result["SensorActivated"] = sensor_activated
@@ -322,7 +368,16 @@ class LibreClient:
                 result["SensorExpires"] = sensor_expires
                 
             return result
+
+
             
+
+        except AuthenticationError:
+            print("Authentication failed. Token likely expired. Relogging...")
+            if self.login() and retry:
+                return self.get_latest_glucose(retry=False)
+            return None
+
         except Exception as e:
             print(f"Glucose fetch error: {e}")
             if "429" in str(e) or "Too Many Requests" in str(e):
@@ -331,7 +386,10 @@ class LibreClient:
                     "message": "Rate limit hit. Backing off and retrying."
                 }
                 return None
+            
+            # Catch other potential auth errors
             if "401" in str(e) or "403" in str(e):
                  if self.login() and retry:
                      return self.get_latest_glucose(retry=False)
             return None
+

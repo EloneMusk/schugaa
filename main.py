@@ -399,10 +399,11 @@ class GraphPlotView(NSView):
         grid_path.stroke()
 
         
-        if len(self.data_points) < 2: return
+        if not self.data_points: return
         
         points_coords = []
         count = len(self.data_points)
+
         
         for i in range(count):
             val, ts = self.data_points[i]
@@ -777,7 +778,10 @@ class GlucoseApp(rumps.App):
         self.menu = []
         self.quit_button = None
         
+        self.last_sensor_activated = None
+        
         self.menu_handler = MenuActionHandler.alloc().initWithApp_(self)
+
         self.setup_application_menu()
 
         self.graph_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("", None, "")
@@ -1012,6 +1016,7 @@ class GlucoseApp(rumps.App):
         thread = threading.Thread(target=self._fetch_and_update, daemon=True)
         thread.start()
 
+
     def _fetch_and_update(self):
         try:
             if USE_DUMMY_DATA:
@@ -1041,6 +1046,8 @@ class GlucoseApp(rumps.App):
         except Exception as e:
             print(f"Error fetching glucose: {e}")
             self.data_queue.put(None)
+
+
 
     def generate_dummy_data(self):
         import math
@@ -1130,7 +1137,38 @@ class GlucoseApp(rumps.App):
                 self.title = "???"
                 return
                 
+            sensor_activated = data.get("SensorActivated")
+            if sensor_activated:
+                self.last_sensor_activated = sensor_activated
+                
             graph_data = data.get("GraphData", [])
+            
+            # Filter out data points from before current sensor activation
+            if sensor_activated and graph_data:
+                from datetime import datetime
+                filtered_data = []
+                for point in graph_data:
+                    ts_str = point.get("Timestamp")
+                    if ts_str:
+                        try:
+                            dt = datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
+                            if dt.timestamp() >= sensor_activated:
+                                filtered_data.append(point)
+                        except Exception:
+                            pass
+                graph_data = filtered_data
+                
+            # If no valid data for current sensor, show waiting status
+            if not graph_data and sensor_activated:
+                if hasattr(self, "status_label"):
+                    self.status_label.setStringValue_("Status: Waiting for data")
+                    from AppKit import NSColor
+                    self.status_label.setTextColor_(NSColor.orangeColor())
+                if hasattr(self, 'graph_view'):
+                    self.graph_view.update_data([])
+                self.title = "..."
+                return
+
             if hasattr(self, 'graph_view'):
                 self.graph_view.update_data(graph_data)
                 
@@ -1211,9 +1249,29 @@ class GlucoseApp(rumps.App):
                  self.title = title_str
 
             try:
-                from datetime import datetime
+                from datetime import datetime, timedelta
                 self.last_updated_at = datetime.now()
+                
+                # Check for connection status from API (2 = Disconnected/Signal Loss)
+                # But prioritize showing OK if we have valid data
+                conn_status = data.get("ConnectionStatus")
+                has_valid_data = (value is not None and graph_data)
+                is_signal_loss = (conn_status == 2 and not has_valid_data)
+
                 if hasattr(self, "status_label"):
+                    if is_signal_loss:
+                         self.status_label.setStringValue_("Status: Signal Loss")
+                         self.status_label.setTextColor_(NSColor.redColor())
+                    else:
+                         self.status_label.setStringValue_("Status: OK")
+                         is_dark = self.is_dark_mode()
+                         if is_dark:
+                            self.status_label.setTextColor_(NSColor.whiteColor())
+                         else:
+                            self.status_label.setTextColor_(NSColor.colorWithCalibratedWhite_alpha_(0.2, 1.0))
+
+
+
                     sensor_text = "--"
                     sensor_activated = data.get("SensorActivated")
                     sensor_expires = data.get("SensorExpires")
@@ -1271,11 +1329,17 @@ class GlucoseApp(rumps.App):
                         else:
                             sensor_text = "Expired ⚠️"
                      
-                    self.status_label.setStringValue_("Status: OK")
+                    if not is_stale and not is_signal_loss:
+                        self.status_label.setStringValue_("Status: OK")
+
+
+                        
                     if hasattr(self, "last_update_label"):
                         self.last_update_label.setStringValue_(f"Last updated: {self.last_updated_at.strftime('%H:%M')}")
                     if hasattr(self, "sensor_label"):
                         self.sensor_label.setStringValue_(f"Sensor: {sensor_text}")
+
+
             except Exception:
                 pass
                  

@@ -1,18 +1,16 @@
 name: Build & Release macOS DMG
 
 on:
-  # 🔁 CI build on every commit
   push:
     branches:
       - main
       - develop
 
-  # 🖱️ Manual versioned release
   workflow_dispatch:
     inputs:
       version:
-        description: "Version number (example: 1.2.3)"
-        required: true
+        description: "Version number (example: 1.2.3) - leave empty for auto-increment"
+        required: false
 
 permissions:
   contents: write
@@ -29,6 +27,70 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # ----------------------------
+      # Calculate next version
+      # ----------------------------
+      - name: Calculate next version
+        id: version
+        run: |
+          # Get latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0")
+          echo "Latest tag: $LATEST_TAG"
+
+          # Remove 'v' prefix
+          VERSION=${LATEST_TAG#v}
+
+          # Split into major and minor
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+
+          # Use manual version if provided, otherwise auto-increment
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            NEW_VERSION="${{ github.event.inputs.version }}"
+          else
+            # Increment: x.1 -> x.9, then x+1.0
+            if [ "$MINOR" -ge 9 ]; then
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+            else
+              MINOR=$((MINOR + 1))
+            fi
+            NEW_VERSION="${MAJOR}.${MINOR}"
+          fi
+
+          NEW_TAG="v${NEW_VERSION}"
+
+          # Check if tag exists
+          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            echo "⚠️ Tag $NEW_TAG exists, finding next available..."
+            while git rev-parse "$NEW_TAG" >/dev/null 2>&1; do
+              if [ "$MINOR" -ge 9 ]; then
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+              else
+                MINOR=$((MINOR + 1))
+              fi
+              NEW_VERSION="${MAJOR}.${MINOR}"
+              NEW_TAG="v${NEW_VERSION}"
+            done
+          fi
+
+          echo "New version: $NEW_VERSION"
+          echo "New tag: $NEW_TAG"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      # ----------------------------
+      # Create and push tag
+      # ----------------------------
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "Creating tag ${{ steps.version.outputs.tag }}"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
 
       # ----------------------------
       # Setup Python
@@ -53,32 +115,6 @@ jobs:
           fi
 
       # ----------------------------
-      # Create version tag (manual only)
-      # ----------------------------
-      - name: Create Git tag
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          TAG="v${{ github.event.inputs.version }}"
-          git rev-parse "$TAG" >/dev/null 2>&1 && {
-            echo "❌ Tag $TAG already exists"
-            exit 1
-          }
-          echo "Creating tag $TAG"
-          git tag "$TAG"
-          git push origin "$TAG"
-
-      # ----------------------------
-      # Checkout correct ref
-      # ----------------------------
-      - name: Checkout correct ref
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch'
-            && format('v{0}', github.event.inputs.version)
-            || github.ref }}
-
-      # ----------------------------
       # Prepare build
       # ----------------------------
       - name: Make package.sh executable
@@ -88,10 +124,12 @@ jobs:
       # Build DMG
       # ----------------------------
       - name: Build DMG
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
         run: ./package.sh
 
       # ----------------------------
-      # Verify build output (debug/sanity)
+      # Verify build output
       # ----------------------------
       - name: Verify build output
         run: |
@@ -101,26 +139,13 @@ jobs:
           ls -lh *.dmg dist/*.dmg || true
 
       # ----------------------------
-      # Upload CI artifact (commit builds)
+      # Publish Release
       # ----------------------------
-      - name: Upload CI DMG artifact
-        if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-dmg-ci
-          path: |
-            *.dmg
-            dist/*.dmg
-
-      # ----------------------------
-      # Publish Versioned Release (manual)
-      # ----------------------------
-      - name: Publish Versioned Release
-        if: github.event_name == 'workflow_dispatch'
+      - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.event.inputs.version }}
-          name: Release v${{ github.event.inputs.version }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           files: |
             *.dmg
