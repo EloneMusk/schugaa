@@ -939,8 +939,13 @@ class GlucoseApp(rumps.App):
         if hasattr(self, 'graph_view'):
             self.graph_view.unit = unit
             self.graph_view.setNeedsDisplay_(True)
-            
-        self.update_glucose(None)
+        
+        # Re-render the menu bar title immediately using cached data
+        # (update_glucose has a debounce so it would skip the update)
+        if hasattr(self, '_last_glucose_data') and self._last_glucose_data:
+            self._update_ui_with_data(self._last_glucose_data)
+        else:
+            self.update_glucose(None)
 
     def logout(self, sender):
         config_path = get_config_path()
@@ -1120,6 +1125,8 @@ class GlucoseApp(rumps.App):
                 return
 
             value = data.get("Value")
+            if value is not None:
+                self._last_glucose_data = data
             if value is None:
                 if data.get("Error") == "rate_limit":
                     self.title = "Rate limited"

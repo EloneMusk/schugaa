@@ -387,7 +387,7 @@ class LibreClient:
             gdata = []
             for h in history:
                 gdata.append({
-                    "Value": h.value,
+                    "Value": h.value_in_mg_per_dl,
                     "Timestamp": fmt_ts(h.timestamp),
                     "FactoryTimestamp": h.factory_timestamp.isoformat()
                 })
@@ -403,7 +403,7 @@ class LibreClient:
                 
                 if should_append:
                     gdata.append({
-                        "Value": latest.value,
+                        "Value": latest.value_in_mg_per_dl,
                         "Timestamp": fmt_ts(latest.timestamp),
                         "FactoryTimestamp": latest.factory_timestamp.isoformat()
                     })
@@ -423,7 +423,7 @@ class LibreClient:
                 print(f"Could not extract sensor data: {e}")
             
             result = {
-                "Value": latest.value,
+                "Value": latest.value_in_mg_per_dl,
                 "TrendArrow": latest.trend.value, 
                 "Timestamp": fmt_ts(latest.timestamp),
                 "GraphData": gdata,
